@@ -65,6 +65,7 @@ namespace SVS_FreeRoam
                 if (playerAI != null)
                 {
                     ClickWalker.Update(playerAI);
+                    ClickIdler.Update(playerAI);
                     Follower.Update(playerAI);
                 }
             }

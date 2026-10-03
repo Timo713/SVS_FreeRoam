@@ -1969,3 +1969,38 @@ instead. UNVERIFIED in game.
 - Right click to follow: only a press made with the cursor free counts, and while the
   cursor is free the follow button no longer also fires interact (the walk to the aimed
   character).
+
+## 28. Click To Idle (2026-10-03)
+
+**Where idle spots and their animations live (CONFIRMED from interop signatures).**
+- Each map's `PointList.urouroTable` (`Dictionary<int job, ListInfo>`, `ListInfo.points`)
+  holds the "urouro" (wander) points: the spots the game sends a character to on
+  entering a map (`MapManager.UroUroPointMove(bctrl, mapID, job -1, poses)`).
+  Reached as `mapManager.pointInfoTable[mapId].pointList`.
+- A point is a `MovePointInfo`: `poses` (`PoseKind` Stand 0, Ground 1, Chair 2, Desk 3),
+  and `urouroDetails` (`JobDetail`: `job`, `animations` = list of `AnimationInfo`
+  {`weight`, `animMotion`, `isAddH`}, `charactorOffset` (where the body is put, e.g. on
+  the seat), `moveObjectName` / `moveObject` (a prop that is moved)).
+- The game picks the animation itself: `MovePointInfo.GetAnimationID(type, job,
+  StateParameter.StateKind state, isWithPair, OnesPropertyInfo[] onesProperty)`. So the
+  choice depends on the character's **mood state** (UPLIFT ... NORMAL) and **traits**
+  (`charasGameParam.onesPropertys`), weighted. Sex is `Human.sex` (byte), personality
+  `HumanDataParameter.personality`; neither is an argument, so any male/female split
+  is in what `animMotion` resolves to. UNVERIFIED which.
+
+**Round 1 (UNVERIFIED in game).** `ClickIdler.cs`, section "Click To Idle".
+- Click near a urouro point (any job key in the table, nearest within Max Distance To
+  Spot): `SetCharaMapMove(Personal, bctrl, {pInfo = that real point, map, type 0,
+  job = its table key})` -- the walk click-to-walk already does, but to the game's own
+  point, so arrival should play its animation.
+- Click on yourself (judged on screen, feet to head): our walk marker is put at the
+  player's feet "wearing" the `poses` and `urouroDetails` of a random standing point of
+  the map that has animations and no offset or prop (`Walker.IdleAt`, `Dress`). Open
+  questions: whether a zero-length walk reaches the arrival step at all, and whether
+  the animation is read from `pInfo` at arrival.
+- With Debug Info on, each idle click logs the point: name, position, poses, and per
+  detail the job and `animMotion x weight` list.
+
+**Settings window order (CONFIRMED from ConfigurationManager's IL).** Categories are
+ordered by first appearance, i.e. the order the entries are bound, then by name.
+Debug Info is therefore bound last.

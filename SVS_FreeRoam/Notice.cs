@@ -22,7 +22,7 @@ namespace SVS_FreeRoam
         private static bool _failed;
         private static readonly List<string> _lines = new List<string>();
 
-        internal static bool On => Plugin.DebugInfo.Value;
+        internal static bool On => Plugin.DebugInfo != null && Plugin.DebugInfo.Value;
 
         /// <summary>For the player rather than for testing: shown whatever Debug Info says,
         /// and for longer.</summary>

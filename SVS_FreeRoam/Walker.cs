@@ -16,6 +16,9 @@ namespace SVS_FreeRoam
         // destroy it while it is still the player's target.
         private static GameObject _marker;
         private static MovePointInfo _markerPoint;
+        // What the marker holds when it is only a place to walk to.
+        private static Il2CppSystem.Collections.Generic.List<MovePointInfo.PoseKind> _blankPoses;
+        private static Il2CppSystem.Collections.Generic.List<MovePointInfo.JobDetail> _blankDetails;
 
         internal static Vector3 MarkerPosition => _marker != null ? _marker.transform.position : Vector3.zero;
 
@@ -45,6 +48,7 @@ namespace SVS_FreeRoam
         internal static void WalkTo(SV.Chara.AI playerAI, Vector3 point, int mapId)
         {
             EnsureMarker();
+            Dress(null);
             _marker.transform.position = point;
 
             // Same shape as the game's own player walks via UroUroPointMove: type 0 (Urouro,
@@ -58,6 +62,51 @@ namespace SVS_FreeRoam
             };
             MapManager.SetCharaMapMove(BehaviourController.BaseActionKind.Personal,
                                        playerAI.BehaviourCtrl, target, false);
+        }
+
+        /// <summary>
+        /// Sends the player to one of the map's own points, so the game plays that point's
+        /// animation on arrival, as it does for the spot it picks when a map is entered.
+        /// </summary>
+        internal static void WalkToPoint(SV.Chara.AI playerAI, MovePointInfo point, int mapId, int job)
+        {
+            var target = new MapManager.MapTargetInfo
+            {
+                pInfo = point,
+                map = mapId,
+                type = 0,
+                job = job,
+            };
+            MapManager.SetCharaMapMove(BehaviourController.BaseActionKind.Personal,
+                                       playerAI.BehaviourCtrl, target, false);
+        }
+
+        /// <summary>
+        /// "Arrives" at <paramref name="where"/> with the animations of <paramref name="source"/>:
+        /// our marker is put there, wearing that point's pose and animation lists.
+        /// </summary>
+        internal static void IdleAt(SV.Chara.AI playerAI, Transform where, MovePointInfo source, int mapId)
+        {
+            EnsureMarker();
+            Dress(source);
+            _marker.transform.SetPositionAndRotation(where.position, where.rotation);
+
+            var target = new MapManager.MapTargetInfo
+            {
+                pInfo = _markerPoint,
+                map = mapId,
+                type = 0,
+                job = -1,
+            };
+            MapManager.SetCharaMapMove(BehaviourController.BaseActionKind.Personal,
+                                       playerAI.BehaviourCtrl, target, false);
+        }
+
+        /// <summary>Gives the marker a real point's animations, or (null) takes them off again.</summary>
+        private static void Dress(MovePointInfo source)
+        {
+            _markerPoint.poses = source != null ? source.poses : _blankPoses;
+            _markerPoint.urouroDetails = source != null ? source.urouroDetails : _blankDetails;
         }
 
         /// <summary>Moves the destination of a walk already under way, without restarting it.</summary>
@@ -94,6 +143,8 @@ namespace SVS_FreeRoam
             _marker = new GameObject("SVS_FreeRoam WalkTarget");
             Object.DontDestroyOnLoad(_marker);
             _markerPoint = _marker.AddComponent<MovePointInfo>();
+            _blankPoses = _markerPoint.poses;
+            _blankDetails = _markerPoint.urouroDetails;
         }
     }
 }

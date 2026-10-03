@@ -171,6 +171,10 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<KeyCode> ClickWalkButton2;
         internal static ConfigEntry<float> ClickWalkMaxSnap;
         internal static ConfigEntry<bool> ClickFollow;
+        internal static ConfigEntry<bool> ClickIdle;
+        internal static ConfigEntry<KeyCode> IdleButton;
+        internal static ConfigEntry<KeyCode> IdleButton2;
+        internal static ConfigEntry<float> IdleSnap;
         internal static ConfigEntry<KeyCode> FollowButton;
         internal static ConfigEntry<KeyCode> FollowButton2;
         internal static ConfigEntry<float> FollowMinDistance;
@@ -325,12 +329,6 @@ namespace SVS_FreeRoam
 
 
 
-            DebugInfo = Config.Bind(
-                "Debug", "Debug Info", false,
-                Ordered("Shows short notes on screen and writes extra details to the log, for " +
-                        "reporting problems. Leave it off for normal play.", 0));
-            CarryOver(DebugInfo, "General", "Testing Info");
-
             ForceHighPoly = Config.Bind(
                 "General", "Force High Poly Characters", false,
                 Ordered("Characters on the map use their full-detail models, the ones normally seen " +
@@ -406,6 +404,26 @@ namespace SVS_FreeRoam
                 "Click To Follow", "Catch-Up Speed", 4f,
                 Ordered("MatchSpeed and Dynamic: how fast you go when catching up (metres per second).",
                         new AcceptableValueRange<float>(1f, 10f), 68));
+            ClickIdle = Config.Bind(
+                "Click To Idle", "Click To Idle", true,
+                Ordered("Click a bench, a chair or another spot where characters hang around to go " +
+                        "there and use it, as your character does when arriving on a map. Click " +
+                        "your own character to idle where you stand. Works whenever the mouse " +
+                        "cursor is showing.", 100));
+
+            IdleButton = Config.Bind(
+                "Click To Idle", "Idle Button", KeyCode.Mouse1,
+                Ordered("Mouse1 is the right button.", 90));
+
+            IdleButton2 = Config.Bind(
+                "Click To Idle", "Idle Button (second)", KeyCode.None,
+                Ordered("An optional second button.", 89));
+
+            IdleSnap = Config.Bind(
+                "Click To Idle", "Max Distance To Spot", 2f,
+                Ordered("How close to an idle spot a click has to land, in metres.",
+                        new AcceptableValueRange<float>(0.5f, 10f), 80));
+
             CarryOverFromWalkAnywhere();
 
 
@@ -822,6 +840,13 @@ namespace SVS_FreeRoam
                     "Screen edge look option above.",
                     new AcceptableValueRange<float>(2f, 40f),
                     new ConfigurationManagerAttributes { Order = 60 }));
+
+            // Bound last: the settings window lists categories in the order they are bound.
+            DebugInfo = Config.Bind(
+                "Debug", "Debug Info", false,
+                Ordered("Shows short notes on screen and writes extra details to the log, for " +
+                        "reporting problems. Leave it off for normal play.", 0));
+            CarryOver(DebugInfo, "General", "Testing Info");
 
             SetTogglePairDrawer();
 
