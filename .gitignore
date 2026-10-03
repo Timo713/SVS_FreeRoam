@@ -1,0 +1,22 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Release zips are built locally and attached to GitHub releases.
+release/
+
+# Kept on the developer's PC only, never published: replaced DLLs (including
+# Junh2x's original), screenshots, drafts, and the old companion plugin's source.
+Backups/
+caps/
+Tempmsg.txt
+SVS_3rdPovTweaks/
+SVS_3rdPovTweaks.sln
+
+# Notes for the AI assistant: kept private.
+CLAUDE.md
