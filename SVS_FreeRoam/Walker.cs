@@ -45,10 +45,13 @@ namespace SVS_FreeRoam
         /// <param name="mapId">The map the point is in. The player's own map for a click; the
         /// followed character's map when following, which is how the game walks through
         /// doorways into another map (travel buttons do the same).</param>
-        internal static void WalkTo(SV.Chara.AI playerAI, Vector3 point, int mapId)
+        /// <param name="arrival">Animations to choose from on arrival (the game picks one, as
+        /// at its own spots); null to just stand.</param>
+        internal static void WalkTo(SV.Chara.AI playerAI, Vector3 point, int mapId,
+                                    System.Collections.Generic.List<int> arrival = null)
         {
             EnsureMarker();
-            Dress(null);
+            Dress(arrival);
             _marker.transform.position = point;
 
             // Same shape as the game's own player walks via UroUroPointMove: type 0 (Urouro,
@@ -82,31 +85,30 @@ namespace SVS_FreeRoam
         }
 
         /// <summary>
-        /// "Arrives" at <paramref name="where"/> with the animations of <paramref name="source"/>:
-        /// our marker is put there, wearing that point's pose and animation lists.
+        /// Makes the marker a standing spot offering these animations, as the map's own spots
+        /// are, or (null) a bare place to walk to.
         /// </summary>
-        internal static void IdleAt(SV.Chara.AI playerAI, Transform where, MovePointInfo source, int mapId)
+        private static void Dress(System.Collections.Generic.List<int> ids)
         {
-            EnsureMarker();
-            Dress(source);
-            _marker.transform.SetPositionAndRotation(where.position, where.rotation);
-
-            var target = new MapManager.MapTargetInfo
+            if (ids == null || ids.Count == 0)
             {
-                pInfo = _markerPoint,
-                map = mapId,
-                type = 0,
-                job = -1,
-            };
-            MapManager.SetCharaMapMove(BehaviourController.BaseActionKind.Personal,
-                                       playerAI.BehaviourCtrl, target, false);
-        }
+                _markerPoint.poses = _blankPoses;
+                _markerPoint.urouroDetails = _blankDetails;
+                return;
+            }
 
-        /// <summary>Gives the marker a real point's animations, or (null) takes them off again.</summary>
-        private static void Dress(MovePointInfo source)
-        {
-            _markerPoint.poses = source != null ? source.poses : _blankPoses;
-            _markerPoint.urouroDetails = source != null ? source.urouroDetails : _blankDetails;
+            var animations = new Il2CppSystem.Collections.Generic.List<MovePointInfo.AnimationInfo>();
+            foreach (int id in ids)
+                animations.Add(new MovePointInfo.AnimationInfo { weight = 1, animMotion = id, isAddH = false });
+
+            var details = new Il2CppSystem.Collections.Generic.List<MovePointInfo.JobDetail>();
+            details.Add(new MovePointInfo.JobDetail { job = MovePointInfo.JobKind.None, animations = animations });
+
+            var poses = new Il2CppSystem.Collections.Generic.List<MovePointInfo.PoseKind>();
+            poses.Add(MovePointInfo.PoseKind.Stand);
+
+            _markerPoint.poses = poses;
+            _markerPoint.urouroDetails = details;
         }
 
         /// <summary>Moves the destination of a walk already under way, without restarting it.</summary>

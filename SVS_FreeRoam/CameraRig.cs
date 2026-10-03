@@ -261,7 +261,8 @@ namespace SVS_FreeRoam
 
             float sensitivity = Plugin.LookSensitivity.Value;
 
-            if (applyInput)
+            // The animation wheel is steered with the mouse; the view holds still meanwhile.
+            if (applyInput && !IdleWheel.IsOpen)
             {
                 _yaw += Input.GetAxis("Mouse X") * sensitivity;
                 _pitch -= Input.GetAxis("Mouse Y") * sensitivity;

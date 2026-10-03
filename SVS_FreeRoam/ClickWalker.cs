@@ -37,6 +37,17 @@ namespace SVS_FreeRoam
                 return;
             }
 
+            // A seat or other special spot: walk to the game's own point, which seats the
+            // character on arrival.
+            if (Plugin.ClickWalkSpots.Value &&
+                ClickIdler.SpotUnderMouse(cam, playerAI, out var spot, out int job))
+            {
+                Follower.Stop("walk click");
+                Notice.Log($"Walk: to spot {ClickIdler.Describe(spot)}, job {job}.");
+                Walker.WalkToPoint(playerAI, spot, playerAI.BehaviourCtrl.NowMapID, job);
+                return;
+            }
+
             float maxSnap = Plugin.ClickWalkMaxSnap.Value;
             if (!Walker.Snap(pick.Aimed, maxSnap, out var point, out float off))
             {
@@ -50,7 +61,16 @@ namespace SVS_FreeRoam
             Follower.Stop("walk click");
             Notice.Log($"Walk: hit {pick.What} at {pick.Aimed}; walkable point {point} " +
                          $"({off:0.00} m away); player at {playerAI.transform.position}.");
-            Walker.WalkTo(playerAI, point, playerAI.BehaviourCtrl.NowMapID);
+            Walker.WalkTo(playerAI, point, playerAI.BehaviourCtrl.NowMapID,
+                          Plugin.ClickWalkIdle.Value ? ArrivalAnimations(playerAI) : null);
+        }
+
+        /// <summary>The map's standing animations without the plain standing pose.</summary>
+        private static System.Collections.Generic.List<int> ArrivalAnimations(SV.Chara.AI playerAI)
+        {
+            var ids = ClickIdler.StandingAnimations(playerAI);
+            ids.Remove(0);
+            return ids.Count > 0 ? ids : null;
         }
 
         internal static string Describe(BehaviourController bctrl)

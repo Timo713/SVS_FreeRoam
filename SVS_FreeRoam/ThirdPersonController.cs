@@ -220,6 +220,9 @@ namespace SVS_FreeRoam
             {
                 var target = FindNearestTarget(scene, mapManager, playerAI, cam, filter);
                 HandleInteract(scene, mapManager, playerAI, target, buttonMode, interactPressed);
+                if (!cursorFree)
+                    ClickIdler.ThirdPerson(playerAI, target.Ai == null && target.JobPoint == null &&
+                                                     target.Link == null && _walkingTo == null);
 
                 // While the cursor is free, a mouse button is for clicking things, not for
                 // walking. Leaving hold-to-walk live meant that clicking a travel button was
@@ -973,7 +976,10 @@ namespace SVS_FreeRoam
                 return;
             }
 
-            ui?.SetTargetCharaName(null);
+            // Nothing else in reach: a seat or other special spot, used by ClickIdler.
+            var spot = inButtonMode ? null : ClickIdler.NearbySpot(playerAI, out _);
+            ui?.SetTargetCharaName(spot != null ? ClickIdler.Label(spot) : null);
+            if (spot != null) ShowMarker(playerAI, spot.transform.position);
         }
 
         /// <summary>

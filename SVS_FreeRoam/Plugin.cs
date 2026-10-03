@@ -174,7 +174,10 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<bool> ClickIdle;
         internal static ConfigEntry<KeyCode> IdleButton;
         internal static ConfigEntry<KeyCode> IdleButton2;
-        internal static ConfigEntry<float> IdleSnap;
+        internal static ConfigEntry<bool> ThirdPersonSpots;
+        internal static ConfigEntry<bool> ClickWalkSpots;
+        internal static ConfigEntry<bool> ClickWalkIdle;
+        internal static ConfigEntry<float> SpotClickSize;
         internal static ConfigEntry<KeyCode> FollowButton;
         internal static ConfigEntry<KeyCode> FollowButton2;
         internal static ConfigEntry<float> FollowMinDistance;
@@ -361,6 +364,21 @@ namespace SVS_FreeRoam
                 Ordered("A click lands on the nearest spot you can walk to. If that is further than " +
                         "this many metres away, the click is ignored.", new AcceptableValueRange<float>(0.5f, 50f), 80));
 
+            ClickWalkSpots = Config.Bind(
+                "Click To Walk", "Use Seats And Special Spots", true,
+                Ordered("Clicking a chair, a bench or another special spot walks you there and uses " +
+                        "it, with the animation the game plays at that spot.", 70));
+
+            SpotClickSize = Config.Bind(
+                "Click To Walk", "Spot Click Size", 0.8f,
+                Ordered("How close to a seat or special spot the cursor has to be for the click to " +
+                        "count as a click on it, in metres.", new AcceptableValueRange<float>(0.2f, 3f), 65));
+
+            ClickWalkIdle = Config.Bind(
+                "Click To Walk", "Idle Animation On Arrival", false,
+                Ordered("After walking to a clicked spot, your character plays one of the map's " +
+                        "standing idle animations instead of just standing there.", 60));
+
             ClickFollow = Config.Bind(
                 "Click To Follow", "Click To Follow", true,
                 Ordered("Click a character to follow them, through doorways too. Click them again, or " +
@@ -406,9 +424,8 @@ namespace SVS_FreeRoam
                         new AcceptableValueRange<float>(1f, 10f), 68));
             ClickIdle = Config.Bind(
                 "Click To Idle", "Click To Idle", true,
-                Ordered("Click a bench, a chair or another spot where characters hang around to go " +
-                        "there and use it, as your character does when arriving on a map. Click " +
-                        "your own character to idle where you stand. Works whenever the mouse " +
+                Ordered("Click your own character to play a random idle animation. Hold the button " +
+                        "on your character to choose one from a wheel. Works whenever the mouse " +
                         "cursor is showing.", 100));
 
             IdleButton = Config.Bind(
@@ -419,10 +436,10 @@ namespace SVS_FreeRoam
                 "Click To Idle", "Idle Button (second)", KeyCode.None,
                 Ordered("An optional second button.", 89));
 
-            IdleSnap = Config.Bind(
-                "Click To Idle", "Max Distance To Spot", 2f,
-                Ordered("How close to an idle spot a click has to land, in metres.",
-                        new AcceptableValueRange<float>(0.5f, 10f), 80));
+            ThirdPersonSpots = Config.Bind(
+                "Click To Idle", "Use Spots In Third Person", true,
+                Ordered("In third person, press interact next to a chair, bench or other special " +
+                        "spot to use it, and hold interact to open the animation wheel.", 80));
 
             CarryOverFromWalkAnywhere();
 

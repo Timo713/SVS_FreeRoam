@@ -2004,3 +2004,43 @@ instead. UNVERIFIED in game.
 **Settings window order (CONFIRMED from ConfigurationManager's IL).** Categories are
 ordered by first appearance, i.e. the order the entries are bound, then by name.
 Debug Info is therefore bound last.
+
+**Round 1 result (developer, 2026-10-03).** Walking to a real urouro point works: the
+character sits on chairs and on the ground (beach). CONFIRMED. The marker "wearing" a
+standing point's details also plays its animations. CONFIRMED. Wrong: right click near a
+standing spot walked there like a left click; clicks on props often missed, because most
+props have no collider and the ray lands on a plane under the floor (`'Plane' layer 8`,
+y -3.04), metres past the prop.
+
+**The animation ids are named (CONFIRMED from interop).** `animMotion` is a value of
+`SV.AnimationCtrlManager.Animation`: stand 0, run 1, walk 3, floor_wait 8, chair_wait 9,
+desk_wait 10, waiting_action_0..3 13-16, exercise 17-19, dumbbell 20, meal_* 21-23,
+work_stand 24, work_chair 25, smart_phone_stand/chair/desk 26-28, bookread_stand/chair
+29-30, erotic_book_stand/chair 31-32, game_stand/chair 34-35, study_desk 36-37,
+job_* 45-52, then paired ones (stroke/hug/kiss/touch by sex). The classroom's spots:
+Stand = 0 x8, 13, 15, 24, 26, 29, 31, 34 (+ activity 3: 51, 52); Chair = 9 x8, 14, 16,
+25, 27, 30, 32, 35; Desk = 10 x8, 28. So the suffix (or the spot's `PoseKind`) is the
+type, and the heavily weighted first entry is the plain waiting pose.
+- `AnimationCtrlManager` (singleton): `animTable` (id -> list of `AnimStateInfo`
+  {hash, name}; probably where sex or variants split, UNVERIFIED), `itemTable` (id ->
+  held items), `idlePtnIDs`, `posePtnChairIDs`, `posePtnDeskIDs`, `IsChair(bctrl)`,
+  `GetNowPtnID(animator)`, `SetAnim(bctrl, animator, actor, ptn, ...)`.
+- `SV.Chara.Base.SetLowpolyAnimation(animID, isLockFlagChange, isBlend,
+  fixedTransitionDuration, isAnimForceChange)` plays one on a character directly.
+
+**Round 2 (UNVERIFIED).**
+- Right click acts only on yourself: click = random animation (`SetLowpolyAnimation(id,
+  false, true, 0.25, true)`, no walk at all), hold 0.35 s = `IdleWheel`.
+- Wheel contents (`ClickIdler.Choices`): at a seat (target `pInfo` is a non-standing
+  real point within 1 m) that point's animations; otherwise every animation of the
+  map's standing spots, all activities.
+- Left click (`ClickWalker`): "Use Seats And Special Spots" picks a non-standing point by
+  the distance from the mouse ray to the seat (`charactorOffset`, +0.4 m), within
+  "Spot Click Size"; no collider needed. "Idle Animation On Arrival" builds a
+  `JobDetail` for our marker from the standing ids minus 0 (`Walker.Dress`).
+- Third person (`ClickIdler.ThirdPerson`, "Use Spots In Third Person"): with nothing
+  else in reach, a seat within 1.5 m is named in the target label; releasing interact
+  uses it, holding opens the wheel, steered by mouse movement while `CameraRig` holds
+  the view still. No stick steering for the wheel yet.
+- With Debug Info on, each map logs once "Idle: animations on map N" with every kind of
+  spot and its named animations.
