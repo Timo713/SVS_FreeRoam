@@ -2044,3 +2044,61 @@ type, and the heavily weighted first entry is the plain waiting pose.
   the view still. No stick steering for the wheel yet.
 - With Debug Info on, each map logs once "Idle: animations on map N" with every kind of
   spot and its named animations.
+
+**Round 3 (UNVERIFIED; round 2 was committed without a detailed report).**
+- A tap while our animation is still playing (`AnimationCtrlManager.IsPlayMotion(bctrl,
+  id)`) returns to the resting pose: the seat's first listed animation, else stand 0.
+- Third person: the idle key is its own setting (Mouse2), free only while no walk is
+  under way and nobody is marked, since Go To Marked Key is Mouse2 too. Seats use
+  interact on press. The seat marker is optional, off by default.
+- Extended Animations: the wheel adds every `AnimationCtrlManager.Animation` below 1000
+  whose name has no `_f_`/`_m_` (paired) and is not run/escape/walk*.
+- `IdleWheel` is a general radial menu now: 8 fixed slots, pages turned with the mouse
+  wheel, disc and highlight wedge drawn into `Texture2D`s at run time
+  (`SetPixels32` + `Sprite.Create`), no image files.
+- Character wheel: holding the idle button on another character offers Talk
+  (`WalkToCharacter`), Follow / Stop following, and Switch to when SVS_CustomGameBalance
+  is there (`CustomGameFunctions.SwitchPCCharacter()` is static with no arguments; it is
+  invoked by reflection after our prefix marks the wanted character). Follower ignores
+  the release that closed a wheel (`ClickIdler.WheelClosedFrame`).
+- Asked for, not built: Ignore, remove from the game, replace with another character
+  (the first belongs to a plugin that does not exist yet).
+
+**Round 3 result (developer, 2026-10-04).** The wheel, pages and direct play
+(`SetLowpolyAnimation`) work. CONFIRMED. Interact-to-sit worked; a random animation
+played next to a chair sat the character badly placed and facing the wrong way.
+
+**Round 4 (UNVERIFIED).**
+- Third person: interact no longer sits. The idle key's tap, in order: stop our
+  animation; get up from the seat (`Walker.WalkTo` the nav point nearest the seat's
+  base, the way a click-walk leaves a seat); use the seat within reach; random animation.
+- A wheel with more than one page stays open when the button is let go; the next
+  press chooses (`ClickIdler._sticky`). Click-walk is off while a wheel is open, and
+  Follower ignores the press that chose.
+- "Wheel Size" (4-16 slots). Disc 1024 px with mip maps and edges softened in the
+  drawing itself; the 256 px one upscaled was the pixelated outline.
+
+## 29. Depth of field in third person (2026-10-04)
+
+- The game's depth of field is **Beautify** (`Beautify.Universal.Beautify`, a URP volume
+  component in `Beautify.Universal.Runtime.dll`), switched by
+  `SV.Config.GraphicSystem.DepthOfField`. Parameters: `depthOfField`,
+  `depthOfFieldFocusMode` (FixedDistance 0, AutoFocus 1, FollowTarget 2),
+  `depthOfFieldDistance`, `depthOfFieldFocalLength`, `depthOfFieldAperture`;
+  `BeautifySettings.depthOfFieldTarget` for FollowTarget. `CameraControl` has
+  `ChangeDepthOfFieldSetting` / `UpdateDepthOfFieldSetting` (stubs to us).
+  `UnityStandardAssets.ImageEffects.DepthOfField` also exists (ADV backup code) but is a
+  built-in-pipeline effect. LIKELY unused.
+- Reported: with it on, characters near the third-person camera are blurred. The old
+  "Hide Blur" option was something else (`HighPolyBackGroundFrame.mainCamera`).
+- `PovFocus` (UNVERIFIED): while third person runs, every Beautify component found in
+  the scene's volumes gets focus mode FixedDistance at the camera-to-player distance
+  (at least 1.2 m), or `depthOfField` false with the Off choice; the game's values are
+  put back when third person ends. With Debug Info on it logs each volume's values
+  once ("Depth of field: volume ..."): if the fix does nothing, that line says whether
+  the game uses a volume at all and with which focus mode.
+
+**Report from a player (unresolved):** "F4 only hides the UI, the camera does not
+change", after uninstalling an old plugin called ThirdPOV. Not reproduced. `CameraRig
+.Place` now warns once in the log when the camera is somewhere else on the next frame
+for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is needed.

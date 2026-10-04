@@ -20,6 +20,20 @@ namespace SVS_FreeRoam
     internal static class SwitchButtonCompat
     {
         private static bool _tried;
+        private static System.Reflection.MethodInfo _switch;
+        private static SV.Chara.AI _wanted;
+
+        /// <summary>Whether SVS_CustomGameBalance's character switch is installed.</summary>
+        internal static bool Available => _switch != null;
+
+        /// <summary>Switches the player to this character, with SVS_CustomGameBalance's own switch.</summary>
+        internal static void SwitchTo(SV.Chara.AI npc)
+        {
+            if (_switch == null || npc == null) return;
+            _wanted = npc;
+            try { _switch.Invoke(null, null); }
+            finally { _wanted = null; }
+        }
 
         internal static void TryApply()
         {
@@ -39,6 +53,7 @@ namespace SVS_FreeRoam
 
                 var method = AccessTools.Method(functions, "SwitchPCCharacter");
                 if (method == null) return;
+                _switch = method;
                 new Harmony(Plugin.Guid + ".switch").Patch(method,
                     prefix: new HarmonyMethod(typeof(SwitchButtonCompat), nameof(BeforeSwitch)));
             }
@@ -52,9 +67,11 @@ namespace SVS_FreeRoam
         {
             try
             {
-                var aimed = ThirdPersonController.AimedCharacter;
+                // The one chosen from the character wheel, or in third person the one aimed at.
+                var aimed = _wanted ?? (ThirdPersonController.IsPovRunning
+                    ? ThirdPersonController.AimedCharacter : null);
                 var player = GameChara.PlayerAI;
-                if (!ThirdPersonController.IsPovRunning || aimed == null || player == null) return;
+                if (aimed == null || player == null) return;
 
                 foreach (var ai in Game.AICharas)
                 {

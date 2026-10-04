@@ -9,6 +9,14 @@ using UnityEngine;
 
 namespace SVS_FreeRoam
 {
+    /// <summary>What third person does with the game's depth of field.</summary>
+    public enum PovDepthOfField
+    {
+        FocusOnYourCharacter,
+        Off,
+        Unchanged,
+    }
+
     /// <summary>How a doorway crossing in third person changes the screen.</summary>
     public enum MapFade
     {
@@ -175,6 +183,13 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<KeyCode> IdleButton;
         internal static ConfigEntry<KeyCode> IdleButton2;
         internal static ConfigEntry<bool> ThirdPersonSpots;
+        internal static ConfigEntry<bool> ShowSpotMarker;
+        internal static ConfigEntry<int> WheelSlots;
+        internal static ConfigEntry<PovDepthOfField> PovDepthOfFieldMode;
+        internal static ConfigEntry<bool> ExtendedAnimations;
+        internal static ConfigEntry<bool> CharacterWheel;
+        internal static ConfigEntry<KeyCode> IdleKeyThirdPerson;
+        internal static ConfigEntry<KeyCode> IdleKeyThirdPerson2;
         internal static ConfigEntry<bool> ClickWalkSpots;
         internal static ConfigEntry<bool> ClickWalkIdle;
         internal static ConfigEntry<float> SpotClickSize;
@@ -345,6 +360,13 @@ namespace SVS_FreeRoam
                         "the new map loading in. Travelling with the location buttons keeps the game's " +
                         "own fade.", 5));
 
+            PovDepthOfFieldMode = Config.Bind(
+                "Camera", "Depth Of Field In Third Person", PovDepthOfField.FocusOnYourCharacter,
+                Ordered("Only matters with Depth Of Field switched on in the game's graphics " +
+                        "settings. Focus On Your Character keeps you and whoever is near you sharp; " +
+                        "Off switches the blur off while third person is on; Unchanged leaves the " +
+                        "game's own focus, which blurs anyone close to the camera.", 4));
+
             ClickWalk = Config.Bind(
                 "Click To Walk", "Click To Walk", true,
                 Ordered("Click the ground to walk there. Works whenever the mouse cursor is showing: in" +
@@ -424,9 +446,9 @@ namespace SVS_FreeRoam
                         new AcceptableValueRange<float>(1f, 10f), 68));
             ClickIdle = Config.Bind(
                 "Click To Idle", "Click To Idle", true,
-                Ordered("Click your own character to play a random idle animation. Hold the button " +
-                        "on your character to choose one from a wheel. Works whenever the mouse " +
-                        "cursor is showing.", 100));
+                Ordered("Click your own character to play a random idle animation, and click again " +
+                        "to stop it. Hold the button on your character to choose one from a wheel. " +
+                        "In third person, the key below does the same.", 100));
 
             IdleButton = Config.Bind(
                 "Click To Idle", "Idle Button", KeyCode.Mouse1,
@@ -436,10 +458,42 @@ namespace SVS_FreeRoam
                 "Click To Idle", "Idle Button (second)", KeyCode.None,
                 Ordered("An optional second button.", 89));
 
+            IdleKeyThirdPerson = Config.Bind(
+                "Click To Idle", "Idle Key In Third Person", KeyCode.Mouse2,
+                Ordered("Mouse2 is the middle button. Tap next to a chair or other special spot to " +
+                        "use it, and tap again to get up; anywhere else a tap plays a random " +
+                        "animation, and another tap stops it. Hold for the wheel. While a character " +
+                        "is marked, the middle button walks to them instead.", 88));
+
+            IdleKeyThirdPerson2 = Config.Bind(
+                "Click To Idle", "Idle Key In Third Person (second)", KeyCode.None,
+                Ordered("An optional second key.", 87));
+
+            ExtendedAnimations = Config.Bind(
+                "Click To Idle", "Extended Animations", false,
+                Ordered("The wheel also lists every other animation in the game, on extra pages " +
+                        "(turn them with the mouse wheel). Many only look right at a chair, a desk " +
+                        "or with the props of an activity.", 85));
+
+            CharacterWheel = Config.Bind(
+                "Click To Idle", "Character Wheel", true,
+                Ordered("Hold the button on another character for a wheel of things to do with " +
+                        "them: talk, follow, switch to.", 83));
+
             ThirdPersonSpots = Config.Bind(
                 "Click To Idle", "Use Spots In Third Person", true,
-                Ordered("In third person, press interact next to a chair, bench or other special " +
-                        "spot to use it, and hold interact to open the animation wheel.", 80));
+                Ordered("In third person, a tap of the idle key next to a chair, bench or other " +
+                        "special spot uses it.", 80));
+
+            ShowSpotMarker = Config.Bind(
+                "Click To Idle", "Show Spot Marker", false,
+                Ordered("In third person, show a marker on the seat or spot the idle key would use.", 79));
+
+            WheelSlots = Config.Bind(
+                "Click To Idle", "Wheel Size", 8,
+                Ordered("How many choices the wheel shows at once. The rest go on further pages: " +
+                        "turn them with the mouse wheel, and the wheel then stays open until you " +
+                        "press the button again to choose.", new AcceptableValueRange<int>(4, 16), 78));
 
             CarryOverFromWalkAnywhere();
 

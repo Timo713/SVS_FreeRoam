@@ -118,8 +118,12 @@ namespace SVS_FreeRoam
             // Only a press made with the cursor free: in third person the same button is
             // interact, and the cursor is free only with the location buttons up.
             if (Keys.Down(Plugin.FollowButton, Plugin.FollowButton2))
-                _pressAt = Cursor.lockState == CursorLockMode.Locked ? (Vector3?)null : Input.mousePosition;
+                _pressAt = Cursor.lockState == CursorLockMode.Locked ||
+                           ClickIdler.WheelClosedFrame == Time.frameCount   // that press chose from the wheel
+                    ? (Vector3?)null : Input.mousePosition;
             if (!Keys.Up(Plugin.FollowButton, Plugin.FollowButton2) || _pressAt == null) return;
+            // A release that just chose from the character wheel is not also a click.
+            if (ClickIdler.WheelClosedFrame == Time.frameCount) { _pressAt = null; return; }
 
             bool dragged = (Input.mousePosition - _pressAt.Value).magnitude > ClickSlop;
             _pressAt = null;
@@ -147,6 +151,17 @@ namespace SVS_FreeRoam
             }
 
             Start(pick.Character);
+        }
+
+        internal static bool IsFollowing(SV.Chara.AI npc) =>
+            _npc != null && npc != null && _npc.Pointer == npc.Pointer;
+
+        /// <summary>Follow this character, or stop if already following them. For the character wheel.</summary>
+        internal static void Toggle(SV.Chara.AI npc, SV.Chara.AI playerAI)
+        {
+            if (npc == null) return;
+            if (IsFollowing(npc)) Stop("chosen from the wheel", playerAI);
+            else Start(npc);
         }
 
         private static void Start(SV.Chara.AI npc)

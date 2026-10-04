@@ -221,8 +221,8 @@ namespace SVS_FreeRoam
                 var target = FindNearestTarget(scene, mapManager, playerAI, cam, filter);
                 HandleInteract(scene, mapManager, playerAI, target, buttonMode, interactPressed);
                 if (!cursorFree)
-                    ClickIdler.ThirdPerson(playerAI, target.Ai == null && target.JobPoint == null &&
-                                                     target.Link == null && _walkingTo == null);
+                    ClickIdler.ThirdPerson(playerAI, _walkingTo == null &&
+                                                     FindMarkedCharacter(playerAI) == null);
 
                 // While the cursor is free, a mouse button is for clicking things, not for
                 // walking. Leaving hold-to-walk live meant that clicking a travel button was
@@ -977,9 +977,14 @@ namespace SVS_FreeRoam
             }
 
             // Nothing else in reach: a seat or other special spot, used by ClickIdler.
-            var spot = inButtonMode ? null : ClickIdler.NearbySpot(playerAI, out _);
-            ui?.SetTargetCharaName(spot != null ? ClickIdler.Label(spot) : null);
-            if (spot != null) ShowMarker(playerAI, spot.transform.position);
+            ui?.SetTargetCharaName(null);
+
+            // The seat or other spot the idle key would use, for those who want it marked.
+            if (Plugin.ShowSpotMarker.Value && !inButtonMode)
+            {
+                var spot = ClickIdler.NearbySpot(playerAI, out _);
+                if (spot != null) ShowMarker(playerAI, spot.transform.position);
+            }
         }
 
         /// <summary>

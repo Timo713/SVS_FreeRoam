@@ -238,10 +238,30 @@ namespace SVS_FreeRoam
         /// <paramref name="applyInput"/> is false while the cursor is free for clicking a
         /// location button, so moving the mouse to reach one does not spin the camera.
         /// </summary>
+        private static Vector3 _checkPosition;
+        private static int _checkFrame = -10;
+        private static int _movedFrames;
+        private static bool _warnedMoved;
+
         internal static void Place(Camera cam, SV.Chara.AI playerAI, bool applyInput,
                                    bool edgeLook = false, bool allowZoom = true)
         {
             if (cam == null || playerAI == null) return;
+
+            // Something else moving the camera after us, frame after frame, is another camera
+            // plugin: say so once, since all the player sees is third person "not working".
+            if (!_warnedMoved && _checkFrame == Time.frameCount - 1 &&
+                (cam.transform.position - _checkPosition).sqrMagnitude > 0.01f)
+            {
+                if (++_movedFrames >= 120)
+                {
+                    _warnedMoved = true;
+                    Plugin.Logger.LogWarning("Third person is on, but something else keeps moving the " +
+                        "camera after SVS_FreeRoam places it. Another camera plugin is probably " +
+                        "installed (an older third person or PoV plugin?); remove it.");
+                }
+            }
+            else if (_checkFrame == Time.frameCount - 1) _movedFrames = 0;
 
             if (!_started)
             {
@@ -338,6 +358,8 @@ namespace SVS_FreeRoam
             cam.transform.position = desired;
             cam.transform.rotation = rotation;
             cam.fieldOfView = _fov;
+            _checkPosition = desired;
+            _checkFrame = Time.frameCount;
             _placedPosition = desired;
             _placedRotation = rotation;
             _havePlaced = true;

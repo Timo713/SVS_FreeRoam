@@ -58,6 +58,7 @@ namespace SVS_FreeRoam
                                ThirdPersonController.InConversation());
 
                 ThirdPersonController.Update(__instance);
+                PovFocus.Tick(ThirdPersonController.IsPovRunning, Camera.main, GameChara.PlayerAI);
 
                 // Clicks on the world, after the game's own click handling for the frame: a
                 // click it used on a character has already set its target by now.
@@ -65,7 +66,7 @@ namespace SVS_FreeRoam
                 if (playerAI != null)
                 {
                     ClickWalker.Update(playerAI);
-                    ClickIdler.Update(playerAI);
+                    ClickIdler.Update(__instance, playerAI);
                     Follower.Update(playerAI);
                 }
             }
