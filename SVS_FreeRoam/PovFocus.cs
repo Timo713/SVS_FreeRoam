@@ -8,10 +8,11 @@ namespace SVS_FreeRoam
 {
     /// <summary>
     /// The game's depth of field (Beautify, switched on in its graphics settings) is set up for
-    /// the overview camera, which sits far from everyone. In third person the camera is close,
-    /// so whoever is near it lands in the blurred foreground. While third person runs this
-    /// keeps the focus at the player's distance, or switches the effect off, and puts the
-    /// game's values back afterwards (FINDINGS.md §29).
+    /// the overview camera, which sits far from everyone: each map focuses 8 to 10 m away. In
+    /// third person the camera is close, so whoever is near it lands in the blurred
+    /// foreground. While third person runs this keeps the focus on the player (in first
+    /// person: on whoever is aimed at, else no blur), and puts the game's values back
+    /// afterwards (FINDINGS.md §29).
     /// </summary>
     internal static class PovFocus
     {
@@ -20,14 +21,15 @@ namespace SVS_FreeRoam
             internal BeautifyFx Effect;
             internal bool On;
             internal BeautifyFx.DoFFocusMode Mode;
-            internal float Distance;
-            internal bool ModeOverride, DistanceOverride;
+            internal float Distance, Aperture;
+            internal bool ModeOverride, DistanceOverride, ApertureOverride;
         }
 
         private static readonly List<Saved> _saved = new List<Saved>();
         private static float _nextScan;
+        private static int _map = int.MinValue;
         private static bool _failed;
-        private static PovDepthOfField _applied = PovDepthOfField.Unchanged;
+        private static bool _active;
 
         internal static void Tick(bool pov, Camera cam, SV.Chara.AI playerAI)
         {
@@ -40,33 +42,50 @@ namespace SVS_FreeRoam
                     Restore();
                     return;
                 }
-                if (mode != _applied) Restore();
-                _applied = mode;
+                _active = true;
 
-                if (Time.unscaledTime >= _nextScan)
+                // A new map brings its own volume: look at once, not at the next half second.
+                int map = playerAI.BehaviourCtrl != null ? playerAI.BehaviourCtrl.NowMapID : -1;
+                if (map != _map || Time.unscaledTime >= _nextScan)
                 {
-                    _nextScan = Time.unscaledTime + 2f;
+                    _map = map;
+                    _nextScan = Time.unscaledTime + 0.5f;
+                    _saved.RemoveAll(s => s.Effect == null);
                     Scan();
                 }
 
-                // To about the player's chest; never closer than arm's length, so first person
-                // (the camera inside the head) focuses on what is in front instead.
-                float distance = Mathf.Max(1.2f,
-                    Vector3.Distance(cam.transform.position, playerAI.transform.position + Vector3.up * 1.2f));
+                // What to keep sharp. Third person: the player. First person (the camera is
+                // inside the player): whoever is aimed at, and nothing blurred otherwise.
+                var eye = cam.transform.position;
+                var player = playerAI.transform.position;
+                bool firstPerson = new Vector2(eye.x - player.x, eye.z - player.z).magnitude < 0.45f;
+                float focus = -1f;
+                if (!firstPerson) focus = Vector3.Distance(eye, player + Vector3.up * 1.3f);
+                else if (ThirdPersonController.AimedCharacter != null)
+                    focus = Vector3.Distance(eye, ThirdPersonController.AimedCharacter.transform.position + Vector3.up * 1.3f);
+
+                bool blur = mode != PovDepthOfField.Off && focus >= 0f;
+                float distance = Mathf.Max(0.5f, focus + Plugin.PovFocusOffset.Value);
 
                 foreach (var saved in _saved)
                 {
                     var effect = saved.Effect;
                     if (effect == null) continue;
-                    if (mode == PovDepthOfField.Off)
-                    {
-                        effect.depthOfField.value = false;
-                        continue;
-                    }
+                    effect.depthOfField.value = saved.On && blur;
+                    if (!blur) continue;
+
                     effect.depthOfFieldFocusMode.overrideState = true;
                     effect.depthOfFieldFocusMode.value = BeautifyFx.DoFFocusMode.FixedDistance;
                     effect.depthOfFieldDistance.overrideState = true;
                     effect.depthOfFieldDistance.value = distance;
+
+                    // Focusing nearer makes the same lens blur the background much more. The
+                    // aperture is narrowed by as much, so the far background is blurred as the
+                    // map's own setting blurs it; Strength then scales that.
+                    float focal = effect.depthOfFieldFocalLength.value;
+                    float match = Mathf.Clamp((distance - focal) / Mathf.Max(0.1f, saved.Distance - focal), 0.02f, 4f);
+                    effect.depthOfFieldAperture.overrideState = true;
+                    effect.depthOfFieldAperture.value = saved.Aperture * match * Plugin.PovBlurStrength.Value;
                 }
             }
             catch (Exception e)
@@ -99,8 +118,10 @@ namespace SVS_FreeRoam
                         On = effect.depthOfField.value,
                         Mode = effect.depthOfFieldFocusMode.value,
                         Distance = effect.depthOfFieldDistance.value,
+                        Aperture = effect.depthOfFieldAperture.value,
                         ModeOverride = effect.depthOfFieldFocusMode.overrideState,
                         DistanceOverride = effect.depthOfFieldDistance.overrideState,
+                        ApertureOverride = effect.depthOfFieldAperture.overrideState,
                     });
                     Notice.Log($"Depth of field: volume '{volume.name}' (global {volume.isGlobal}, priority " +
                                $"{volume.priority}): on {effect.depthOfField.value}, focus " +
@@ -113,20 +134,23 @@ namespace SVS_FreeRoam
 
         private static void Restore()
         {
-            if (_saved.Count == 0) { _applied = PovDepthOfField.Unchanged; return; }
+            if (!_active) return;
+            _active = false;
             foreach (var saved in _saved)
             {
                 var effect = saved.Effect;
                 if (effect == null) continue;
-                if (_applied == PovDepthOfField.Off) effect.depthOfField.value = saved.On;
+                effect.depthOfField.value = saved.On;
                 effect.depthOfFieldFocusMode.value = saved.Mode;
                 effect.depthOfFieldFocusMode.overrideState = saved.ModeOverride;
                 effect.depthOfFieldDistance.value = saved.Distance;
                 effect.depthOfFieldDistance.overrideState = saved.DistanceOverride;
+                effect.depthOfFieldAperture.value = saved.Aperture;
+                effect.depthOfFieldAperture.overrideState = saved.ApertureOverride;
             }
             _saved.Clear();
             _nextScan = 0f;
-            _applied = PovDepthOfField.Unchanged;
+            _map = int.MinValue;
         }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using ILLGames.Unity.Component;
 using Manager;
@@ -8,6 +9,14 @@ using UnityEngine;
 
 namespace SVS_FreeRoam
 {
+    /// <summary>What a tap of the idle button or key plays.</summary>
+    public enum IdleTap
+    {
+        RandomAnimation,
+        FavoritesWheel,
+        ChosenAnimation,
+    }
+
     /// <summary>
     /// Idle animations on demand, and the wheel for choosing them. The spots are the map's own
     /// "urouro" (wander) points, the ones the game sends the player to on arriving in a map;
@@ -20,8 +29,9 @@ namespace SVS_FreeRoam
         private const float ClickSlop = 8f;            // pixels a click may drift and still be a click
         private const float BodyHeight = 1.5f;         // feet to about the head, for clicks on yourself
         private const float HoldTime = 0.35f;          // seconds held before the wheel opens
-        private const float SpotReach = 1.5f;          // third person: how near a seat has to be
+        private const float SpotReach = 1f;            // third person: how near a seat has to be
         private const float SpotHeight = 0.4f;         // where on a seat a click is aimed, above its base
+        private const string Star = "★ ";
 
         // What the game's standing spots offer, for maps whose spots cannot be read.
         private static readonly int[] DefaultStanding = { 0, 13, 15, 24, 26, 29, 31, 34 };
@@ -33,22 +43,69 @@ namespace SVS_FreeRoam
         private static float _pressTime;
         private static SV.Chara.AI _pressCharacter;
         private static int _thirdPersonFrame;
-        // The wheel is staying up after the button was let go (it has pages to scroll
-        // through); the next press of the button chooses.
+        // The wheel is staying up after the button was let go; a click chooses.
         private static bool _sticky;
         private static bool _stickyThirdPerson;
+        // A click that chose from the wheel is nobody else's, until every button is let go.
+        private static bool _swallow;
+        private static int _swallowEndFrame = -1;
         private static List<Action> _actions;
+        private static List<int> _wheelIds;            // the animations in the open wheel; null for other wheels
         private static int _playing = -1;
         private static int _listedMap = -1;
         private static List<int> _all;
 
-        /// <summary>The frame a wheel was closed in: that release is not also a click.</summary>
+        /// <summary>The frame a wheel was closed in: that press or release is not also a click.</summary>
         internal static int WheelClosedFrame { get; private set; } = -1;
+
+        /// <summary>The wheel has the mouse: no walking forward, interacting or click-walking.</summary>
+        internal static bool BlocksInput =>
+            IdleWheel.IsOpen || _swallow || _swallowEndFrame == Time.frameCount;
 
         // ------------------------------------------------------------------ names and lists
 
         internal static string Name(int id) =>
-            ((AnimationCtrlManager.Animation)id).ToString().Replace('_', ' ');
+            CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
+                ((AnimationCtrlManager.Animation)id).ToString().Replace('_', ' '));
+
+        /// <summary>
+        /// Every animation one character can do alone, whatever the map: the game's whole
+        /// list without moving about, the paired ones (hug, kiss...) and H.
+        /// </summary>
+        internal static List<int> AllAnimations()
+        {
+            if (_all != null) return _all;
+            _all = new List<int>();
+            foreach (AnimationCtrlManager.Animation animation in Enum.GetValues(typeof(AnimationCtrlManager.Animation)))
+            {
+                int id = (int)animation;
+                string name = animation.ToString();
+                if (id >= 1000 || name.Contains("_f_") || name.Contains("_m_") || name == "run" ||
+                    name == "escape" || name.StartsWith("walk")) continue;
+                _all.Add(id);
+            }
+            return _all;
+        }
+
+        private static List<int> Favorites()
+        {
+            var ids = new List<int>();
+            foreach (string part in Plugin.FavoriteAnimations.Value.Split(','))
+            {
+                string name = part.Trim();
+                foreach (int id in AllAnimations())
+                    if (string.Equals(Name(id), name, StringComparison.OrdinalIgnoreCase) && !ids.Contains(id))
+                        ids.Add(id);
+            }
+            return ids;
+        }
+
+        private static void ToggleFavorite(int id)
+        {
+            var ids = Favorites();
+            if (!ids.Remove(id)) ids.Add(id);
+            Plugin.FavoriteAnimations.Value = string.Join(", ", ids.ConvertAll(Name));
+        }
 
         private static Il2CppSystem.Collections.Generic.Dictionary<int, PointList.ListInfo> Spots(
             SV.Chara.AI playerAI, out int mapId)
@@ -109,25 +166,6 @@ namespace SVS_FreeRoam
             return ids;
         }
 
-        /// <summary>
-        /// Every animation one character can do alone, whatever the map: the game's whole
-        /// list without moving about, the paired ones (hug, kiss...) and H.
-        /// </summary>
-        private static List<int> AllAnimations()
-        {
-            if (_all != null) return _all;
-            _all = new List<int>();
-            foreach (AnimationCtrlManager.Animation animation in Enum.GetValues(typeof(AnimationCtrlManager.Animation)))
-            {
-                int id = (int)animation;
-                string name = animation.ToString();
-                if (id >= 1000 || name.Contains("_f_") || name.Contains("_m_") || name == "run" ||
-                    name == "escape" || name.StartsWith("walk")) continue;
-                _all.Add(id);
-            }
-            return _all;
-        }
-
         /// <summary>The seat or other special spot the player is using, if any.</summary>
         private static MovePointInfo CurrentSeat(SV.Chara.AI playerAI)
         {
@@ -182,18 +220,72 @@ namespace SVS_FreeRoam
             // A click-walk still under way would carry the animation along with it.
             if (Walker.IsWalking(playerAI.BehaviourCtrl)) playerAI.BehaviourCtrl.Stop(true);
             Notice.Log($"Idle: playing {id} ({Name(id)}).");
-            playerAI.SetLowpolyAnimation(id, false, true, 0.25f, true);
+
+            bool played = false;
+            if (Plugin.AnimationProps.Value)
+            {
+                // The game's own way of putting a character into an animation, which also
+                // shows what the animation holds (a phone, a book).
+                try
+                {
+                    var manager = SingletonInitializerAsync<AnimationCtrlManager>.Instance;
+                    if (manager != null && playerAI.animator != null)
+                    {
+                        manager.SetAnim(playerAI.BehaviourCtrl, playerAI.animator, playerAI.charaData,
+                                        id, 0.25f, true, false, true);
+                        manager.SetItemVisible(playerAI.BehaviourCtrl);
+                        played = true;
+                    }
+                }
+                catch (Exception e)
+                {
+                    Notice.Log("Idle: the game's own animation call failed (" + e.Message + "); playing it plainly.");
+                }
+            }
+            if (!played) playerAI.SetLowpolyAnimation(id, false, true, 0.25f, true);
             _playing = id == Resting(playerAI) ? -1 : id;
         }
 
-        /// <summary>A tap: stops the animation we started if it is still playing, else plays a random one.</summary>
-        private static void Tap(SV.Chara.AI playerAI)
+        private static bool PlayingOurs(SV.Chara.AI playerAI)
         {
             var manager = SingletonInitializerAsync<AnimationCtrlManager>.Instance;
-            if (_playing >= 0 && manager != null && manager.IsPlayMotion(playerAI.BehaviourCtrl, _playing))
+            return _playing >= 0 && manager != null && manager.IsPlayMotion(playerAI.BehaviourCtrl, _playing);
+        }
+
+        /// <summary>
+        /// A tap: stops the animation we started if it is still playing; otherwise whatever
+        /// Tap Plays says.
+        /// </summary>
+        private static void Tap(SV.Chara.AI playerAI, bool thirdPerson)
+        {
+            if (PlayingOurs(playerAI))
             {
                 Play(playerAI, Resting(playerAI));
                 return;
+            }
+
+            switch (Plugin.TapPlays.Value)
+            {
+                case IdleTap.FavoritesWheel:
+                    var favorites = Favorites();
+                    if (favorites.Count == 0)
+                    {
+                        Notice.Tell("No favourite animations yet: hold the button for the wheel and " +
+                                    $"press {Plugin.FavoriteKey.Value} on an animation.", 6f);
+                        return;
+                    }
+                    var centre = thirdPerson ? new Vector2(Screen.width, Screen.height) * 0.5f
+                                             : (Vector2)Input.mousePosition;
+                    OpenAnimationWheel(favorites, centre, thirdPerson);
+                    _sticky = true;
+                    _stickyThirdPerson = thirdPerson;
+                    IdleWheel.Sticky = true;
+                    return;
+
+                case IdleTap.ChosenAnimation:
+                    foreach (int id in AllAnimations())
+                        if (Name(id) == Plugin.TapAnimation.Value) { Play(playerAI, id); return; }
+                    break;
             }
 
             var ids = Fitting(playerAI);
@@ -206,20 +298,34 @@ namespace SVS_FreeRoam
 
         // ------------------------------------------------------------------ wheels
 
-        private static void OpenAnimationWheel(SV.Chara.AI playerAI, Vector2 centre, bool virtualPointer)
+        /// <summary>What the held wheel lists: what fits here, the favourites, and with
+        /// Extended Animations everything else.</summary>
+        private static List<int> WheelAnimations(SV.Chara.AI playerAI)
         {
-            // What fits here first; with Extended Animations, everything else after it.
-            var ids = Fitting(playerAI);
+            var ids = new List<int>();
+            var fitting = Fitting(playerAI);
+            // Seated, the seat's own come first; standing, the favourites do.
+            if (CurrentSeat(playerAI) != null) ids.AddRange(fitting);
+            foreach (int id in Favorites()) if (!ids.Contains(id)) ids.Add(id);
+            foreach (int id in fitting) if (!ids.Contains(id)) ids.Add(id);
             if (Plugin.ExtendedAnimations.Value)
-                foreach (int id in AllAnimations())
-                    if (!ids.Contains(id)) ids.Add(id);
+                foreach (int id in AllAnimations()) if (!ids.Contains(id)) ids.Add(id);
+            return ids;
+        }
 
+        private static string WheelLabel(int id, List<int> favorites) =>
+            (favorites.Contains(id) ? Star : "") + Name(id);
+
+        private static void OpenAnimationWheel(List<int> ids, Vector2 centre, bool virtualPointer)
+        {
+            var favorites = Favorites();
             var labels = new List<string>();
             _actions = new List<Action>();
+            _wheelIds = ids;
             foreach (int id in ids)
             {
                 int chosen = id;
-                labels.Add(Name(id));
+                labels.Add(WheelLabel(id, favorites));
                 _actions.Add(() => Play(GameChara.PlayerAI, chosen));
             }
             IdleWheel.Open(labels, centre, virtualPointer);
@@ -229,6 +335,7 @@ namespace SVS_FreeRoam
         {
             var labels = new List<string>();
             _actions = new List<Action>();
+            _wheelIds = null;
 
             labels.Add("Talk");
             _actions.Add(() => ThirdPersonController.WalkToCharacter(scene, GameChara.PlayerAI, npc));
@@ -244,6 +351,33 @@ namespace SVS_FreeRoam
             IdleWheel.Open(labels, centre, false);
         }
 
+        /// <summary>
+        /// While a wheel is open: the favourite key stars the animation under the pointer, and
+        /// a left click chooses, whichever button opened the wheel. True when the wheel was
+        /// closed by that click.
+        /// </summary>
+        private static bool WheelKeys()
+        {
+            if (!IdleWheel.IsOpen) return false;
+
+            var highlighted = IdleWheel.Highlighted;
+            if (_wheelIds != null && highlighted != null && highlighted.Value < _wheelIds.Count &&
+                Input.GetKeyDown(Plugin.FavoriteKey.Value))
+            {
+                int id = _wheelIds[highlighted.Value];
+                ToggleFavorite(id);
+                IdleWheel.SetLabel(highlighted.Value, WheelLabel(id, Favorites()));
+            }
+
+            if (!Input.GetMouseButtonDown(0)) return false;
+            CloseWheel();
+            _swallow = true;
+            _sticky = false;
+            _press = Press.None;
+            _pressCharacter = null;
+            return true;
+        }
+
         private static void CloseWheel()
         {
             var chosen = IdleWheel.Close();
@@ -254,14 +388,14 @@ namespace SVS_FreeRoam
         }
 
         /// <summary>
-        /// The button was let go with the wheel open: choose, or with more than one page
-        /// leave the wheel up until the button is pressed again.
+        /// The button was let go with the wheel open: choose. In third person a wheel with
+        /// more than one page stays up instead, until a choice is clicked.
         /// </summary>
         private static void ReleaseWheel(bool thirdPerson)
         {
-            if (IdleWheel.Pages <= 1) { CloseWheel(); return; }
+            if (!thirdPerson || IdleWheel.Pages <= 1) { CloseWheel(); return; }
             _sticky = true;
-            _stickyThirdPerson = thirdPerson;
+            _stickyThirdPerson = true;
             IdleWheel.Sticky = true;
         }
 
@@ -276,13 +410,19 @@ namespace SVS_FreeRoam
         // ------------------------------------------------------------------ cursor free
 
         /// <summary>
-        /// With the cursor showing: a click of the idle button on your own character plays a
-        /// random animation (or stops it), holding it there opens the animation wheel, and
-        /// holding it on another character opens their wheel.
+        /// With the cursor showing: a click of the idle button on your own character plays an
+        /// animation (or stops it), holding it there opens the animation wheel, and holding it
+        /// on another character opens their wheel.
         /// </summary>
         internal static void Update(SimulationScene scene, SV.Chara.AI playerAI)
         {
             if (Notice.On) ListMapAnimations(playerAI);
+
+            if (_swallow && !Input.GetMouseButton(0) && !Input.GetMouseButton(1) && !Input.GetMouseButton(2))
+            {
+                _swallow = false;
+                _swallowEndFrame = Time.frameCount;
+            }
 
             if (!Plugin.ClickIdle.Value) { Cancel(); return; }
             if (Cursor.lockState == CursorLockMode.Locked)
@@ -293,6 +433,8 @@ namespace SVS_FreeRoam
                 return;
             }
             if (_press == Press.ThirdPerson || (_sticky && _stickyThirdPerson)) Cancel();
+
+            if (WheelKeys()) return;
 
             if (_sticky)
             {
@@ -332,7 +474,7 @@ namespace SVS_FreeRoam
             {
                 if (!IdleWheel.IsOpen && !dragged && Time.unscaledTime - _pressTime >= HoldTime)
                 {
-                    if (_press == Press.Self) OpenAnimationWheel(playerAI, _pressAt, false);
+                    if (_press == Press.Self) OpenAnimationWheel(WheelAnimations(playerAI), _pressAt, false);
                     else if (_pressCharacter != null) OpenCharacterWheel(scene, _pressCharacter, _pressAt);
                 }
                 IdleWheel.Tick();
@@ -340,10 +482,11 @@ namespace SVS_FreeRoam
             }
 
             // Released.
-            if (IdleWheel.IsOpen) ReleaseWheel(false);
-            else if (!dragged && _press == Press.Self) Tap(playerAI);
+            var released = _press;
             _press = Press.None;
             _pressCharacter = null;
+            if (IdleWheel.IsOpen) ReleaseWheel(false);
+            else if (!dragged && released == Press.Self) Tap(playerAI, false);
         }
 
         /// <summary>Whether the cursor is on the player's body, judged on screen: feet to head.</summary>
@@ -435,27 +578,26 @@ namespace SVS_FreeRoam
             return spot;
         }
 
-        internal static string Label(MovePointInfo spot)
-        {
-            var poses = spot.poses;
-            var pose = poses != null && poses.Count > 0 ? poses[0] : MovePointInfo.PoseKind.Stand;
-            return pose == MovePointInfo.PoseKind.Chair ? "Sit"
-                 : pose == MovePointInfo.PoseKind.Desk ? "Sit at the desk"
-                 : "Rest here";
-        }
-
-        /// <summary>Third person: sit on, or otherwise use, this spot within reach.</summary>
-        internal static void UseSpot(SV.Chara.AI playerAI, MovePointInfo spot, int job)
+        /// <summary>
+        /// Third person: sit on, or otherwise use, this spot within reach. The player is put on
+        /// the spot first, so the game's walk there is over at once and it goes straight to
+        /// seating the character: walking the last step by its own steering sometimes left
+        /// the walk animation running (as at doorways, where the same is done).
+        /// </summary>
+        private static void UseSpot(SV.Chara.AI playerAI, MovePointInfo spot, int job)
         {
             Follower.Stop("using a spot", playerAI);
             Notice.Log($"Idle: using {Describe(spot)}, job {job}.");
+            playerAI.BehaviourCtrl.Stop(true);
+            playerAI.position = spot.transform.position;
             Walker.WalkToPoint(playerAI, spot, playerAI.BehaviourCtrl.NowMapID, job);
         }
 
         /// <summary>
-        /// Third person, cursor locked: a tap of the idle key plays a random animation (or
-        /// stops it), holding it opens the wheel. <paramref name="free"/>: the key has nothing
-        /// else to do (no walk under way, nobody marked to walk to).
+        /// Third person, cursor locked: a tap of the idle key uses the seat within reach or
+        /// plays an animation (or stops it), holding it opens the wheel.
+        /// <paramref name="free"/>: the key has nothing else to do (no walk under way, nobody
+        /// marked to walk to).
         /// </summary>
         internal static void ThirdPerson(SV.Chara.AI playerAI, bool free)
         {
@@ -463,6 +605,8 @@ namespace SVS_FreeRoam
             if ((_press != Press.None && _press != Press.ThirdPerson) || (_sticky && !_stickyThirdPerson))
                 Cancel();
             _thirdPersonFrame = Time.frameCount;
+
+            if (WheelKeys()) return;
 
             if (_sticky)
             {
@@ -485,27 +629,24 @@ namespace SVS_FreeRoam
             if (Keys.Held(Plugin.IdleKeyThirdPerson, Plugin.IdleKeyThirdPerson2))
             {
                 if (!IdleWheel.IsOpen && Time.unscaledTime - _pressTime >= HoldTime)
-                    OpenAnimationWheel(playerAI, new Vector2(Screen.width, Screen.height) * 0.5f, true);
+                    OpenAnimationWheel(WheelAnimations(playerAI), new Vector2(Screen.width, Screen.height) * 0.5f, true);
                 IdleWheel.Tick();
                 return;
             }
 
             // Released.
+            _press = Press.None;
             if (IdleWheel.IsOpen) ReleaseWheel(true);
             else TapThirdPerson(playerAI);
-            _press = Press.None;
         }
 
         /// <summary>
         /// The idle key tapped in third person: stops the animation we started; else gets up
-        /// from the seat; else sits on the seat within reach; else plays a random animation.
+        /// from the seat; else sits on the seat within reach; else whatever Tap Plays says.
         /// </summary>
         private static void TapThirdPerson(SV.Chara.AI playerAI)
         {
-            var manager = SingletonInitializerAsync<AnimationCtrlManager>.Instance;
-            bool ours = _playing >= 0 && manager != null &&
-                        manager.IsPlayMotion(playerAI.BehaviourCtrl, _playing);
-            if (ours) { Tap(playerAI); return; }
+            if (PlayingOurs(playerAI)) { Tap(playerAI, true); return; }
 
             var seat = CurrentSeat(playerAI);
             if (seat != null)
@@ -521,7 +662,7 @@ namespace SVS_FreeRoam
 
             var spot = NearbySpot(playerAI, out int job);
             if (spot != null) { UseSpot(playerAI, spot, job); return; }
-            Tap(playerAI);
+            Tap(playerAI, true);
         }
 
         // ------------------------------------------------------------------ for reference

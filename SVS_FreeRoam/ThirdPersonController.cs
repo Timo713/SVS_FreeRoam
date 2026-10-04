@@ -181,7 +181,8 @@ namespace SVS_FreeRoam
             bool followClick = cursorFree && Plugin.ClickFollow.Value &&
                                Keys.Down(Plugin.FollowButton, Plugin.FollowButton2);
             bool interactKey = Keys.Down(Plugin.InteractKey, Plugin.InteractKey2) && !followClick;
-            bool interactPressed = interactKey || talkPad || placePad;
+            // While the animation wheel is up the mouse is choosing from it.
+            bool interactPressed = (interactKey || talkPad || placePad) && !ClickIdler.BlocksInput;
             var filter = interactKey || (talkPad && placePad) ? TargetFilter.Any
                        : talkPad ? TargetFilter.People
                        : placePad ? TargetFilter.Places
@@ -190,7 +191,8 @@ namespace SVS_FreeRoam
             // The marked character has its own key, middle click by default, as in the overview
             // camera. The game's own middle-click handler stays suppressed in third person
             // (Hooks), so this is the only thing that answers it.
-            bool markedPressed = Keys.Down(Plugin.GoToMarkedKey, Plugin.GoToMarkedKey2);
+            bool markedPressed = Keys.Down(Plugin.GoToMarkedKey, Plugin.GoToMarkedKey2) &&
+                                 !ClickIdler.BlocksInput;
             ForgetArrivedWalk(playerAI);
 
             // Order matters, and it is: cancel, then marked, then anything nearby, then
@@ -228,7 +230,7 @@ namespace SVS_FreeRoam
                 // walking. Leaving hold-to-walk live meant that clicking a travel button was
                 // read as one frame of "forward", which drove the player by hand and then
                 // stopped -- cancelling the walk the button had just started.
-                MovePlayer(cam, playerAI, allowMouseForward: !cursorFree);
+                MovePlayer(cam, playerAI, allowMouseForward: !cursorFree && !ClickIdler.BlocksInput);
             }
             else if (_handling)
             {

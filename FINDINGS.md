@@ -2102,3 +2102,34 @@ played next to a chair sat the character badly placed and facing the wrong way.
 change", after uninstalling an old plugin called ThirdPOV. Not reproduced. `CameraRig
 .Place` now warns once in the log when the camera is somewhere else on the next frame
 for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is needed.
+
+**Round 4 result (developer, 2026-10-04), and round 5 (UNVERIFIED).**
+- Sitting by a tap in third person worked but sometimes left the walk animation running
+  on the way to the seat (third person steers the player by hand while the game's walk
+  runs; the same as at doorways). Now the player is put on the point first
+  (`playerAI.position = spot.transform.position`, then the same `SetCharaMapMove`), and
+  the reach is 1 m.
+- The wheel hitched the first time on each map: its textures were redrawn whenever the
+  scene's canvas was rebuilt, at 1024 px. They are drawn once now, 512 px, kept with
+  `HideFlags.HideAndDontSave`. The highlight is one ring sprite on a Filled / Radial360
+  `Image` (`fillAmount = 1 / choices`), so any number of choices per page works and a
+  page's choices always share the whole circle.
+- The wheel stays open after release only in third person with more than one page (and
+  for the favourites wheel opened by a tap). A left click always chooses;
+  `ClickIdler.BlocksInput` keeps that click from walking, interacting or click-walking
+  until every mouse button is up.
+- Favourites: names in the "Favourite Animations" setting, toggled with the Favourite Key
+  on the wheel. "Tap Plays": random / favourites wheel / one chosen animation.
+- "Animation Props And Effects": plays through `AnimationCtrlManager.SetAnim(bctrl,
+  animator, actor, id, 0.25, force true, lockFlag false, blend true)` and
+  `SetItemVisible(bctrl)`, falling back to `SetLowpolyAnimation`. Whether this adds props
+  or sounds over the plain call is UNVERIFIED; no separate sound call for map
+  animations was found in the interop (sounds may be animation events on the clips).
+- **Depth of field values per map (CONFIRMED from the log):** each map has a global
+  volume with Beautify, all FixedDistance: distance 10.1 / focal length 0.011 /
+  aperture 67.85 ('Global Volume_m00'); 9 / 0.15 / 4; 8.34 / 0.308 / 0.9. A base
+  'Global Volume' (priority -1) has it off. So the look differs a lot by map.
+  `PovFocus` now scales the aperture by (new distance - f) / (map's distance - f), which
+  keeps the far background as blurred as the map's own setting does, times "Third
+  Person Blur Strength"; rescans on a map change; in first person focuses on the aimed
+  character or switches the blur off; and stands down under menus and conversations.

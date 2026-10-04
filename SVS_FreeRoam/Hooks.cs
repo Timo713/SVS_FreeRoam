@@ -58,7 +58,9 @@ namespace SVS_FreeRoam
                                ThirdPersonController.InConversation());
 
                 ThirdPersonController.Update(__instance);
-                PovFocus.Tick(ThirdPersonController.IsPovRunning, Camera.main, GameChara.PlayerAI);
+                // Not under a menu or in a conversation: those set the focus up themselves.
+                PovFocus.Tick(ThirdPersonController.IsPovRunning && !Manager.Scene.IsOverlap &&
+                              !ThirdPersonController.IsAnyMenuOpen(), Camera.main, GameChara.PlayerAI);
 
                 // Clicks on the world, after the game's own click handling for the frame: a
                 // click it used on a character has already set its target by now.

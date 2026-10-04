@@ -12,7 +12,7 @@ namespace SVS_FreeRoam
         internal static void Update(SV.Chara.AI playerAI)
         {
             if (!Plugin.ClickWalk.Value) return;
-            if (IdleWheel.IsOpen) return;
+            if (ClickIdler.BlocksInput) return;
             if (!Keys.Down(Plugin.ClickWalkButton, Plugin.ClickWalkButton2)) return;
 
             string why = Picker.WhyNotClickable();

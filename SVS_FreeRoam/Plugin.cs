@@ -185,6 +185,13 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<bool> ThirdPersonSpots;
         internal static ConfigEntry<bool> ShowSpotMarker;
         internal static ConfigEntry<int> WheelSlots;
+        internal static ConfigEntry<IdleTap> TapPlays;
+        internal static ConfigEntry<string> TapAnimation;
+        internal static ConfigEntry<KeyCode> FavoriteKey;
+        internal static ConfigEntry<string> FavoriteAnimations;
+        internal static ConfigEntry<bool> AnimationProps;
+        internal static ConfigEntry<float> PovBlurStrength;
+        internal static ConfigEntry<float> PovFocusOffset;
         internal static ConfigEntry<PovDepthOfField> PovDepthOfFieldMode;
         internal static ConfigEntry<bool> ExtendedAnimations;
         internal static ConfigEntry<bool> CharacterWheel;
@@ -365,7 +372,19 @@ namespace SVS_FreeRoam
                 Ordered("Only matters with Depth Of Field switched on in the game's graphics " +
                         "settings. Focus On Your Character keeps you and whoever is near you sharp; " +
                         "Off switches the blur off while third person is on; Unchanged leaves the " +
-                        "game's own focus, which blurs anyone close to the camera.", 4));
+                        "game's own focus, which blurs anyone close to the camera. In first person " +
+                        "the focus is on whoever you aim at, and nothing is blurred otherwise.", 4));
+
+            PovBlurStrength = Config.Bind(
+                "Camera", "Third Person Blur Strength", 1f,
+                Ordered("How strongly the background is blurred in third person, compared with the " +
+                        "map's own setting. 1 matches it; 0 is no blur.",
+                        new AcceptableValueRange<float>(0f, 3f), 3));
+
+            PovFocusOffset = Config.Bind(
+                "Camera", "Third Person Focus Offset", 0f,
+                Ordered("Moves the sharpest point further away than your character (or nearer, " +
+                        "below zero), in metres.", new AcceptableValueRange<float>(-3f, 10f), 2));
 
             ClickWalk = Config.Bind(
                 "Click To Walk", "Click To Walk", true,
@@ -491,9 +510,36 @@ namespace SVS_FreeRoam
 
             WheelSlots = Config.Bind(
                 "Click To Idle", "Wheel Size", 8,
-                Ordered("How many choices the wheel shows at once. The rest go on further pages: " +
-                        "turn them with the mouse wheel, and the wheel then stays open until you " +
-                        "press the button again to choose.", new AcceptableValueRange<int>(4, 16), 78));
+                Ordered("How many choices the wheel shows at once. The rest go on further pages, " +
+                        "turned with the mouse wheel. In third person a wheel with pages stays open " +
+                        "when you let go: click a choice, or the centre to cancel.",
+                        new AcceptableValueRange<int>(4, 16), 78));
+
+            TapPlays = Config.Bind(
+                "Click To Idle", "Tap Plays", IdleTap.RandomAnimation,
+                Ordered("What a tap of the idle button or key does: a random animation, your wheel " +
+                        "of favourites, or the one animation chosen below.", 77));
+
+            TapAnimation = Config.Bind(
+                "Click To Idle", "Tap Animation", "Waiting Action 0",
+                Ordered("The animation a tap plays when Tap Plays is set to Chosen Animation.",
+                        new AcceptableValueList<string>(
+                            ClickIdler.AllAnimations().ConvertAll(ClickIdler.Name).ToArray()), 76));
+
+            FavoriteKey = Config.Bind(
+                "Click To Idle", "Favourite Key", KeyCode.F,
+                Ordered("With the wheel open, press this on an animation to add it to your " +
+                        "favourites or take it off. Favourites are starred and listed first.", 75));
+
+            FavoriteAnimations = Config.Bind(
+                "Click To Idle", "Favourite Animations", "",
+                Ordered("Your favourites, by name, separated by commas. Easier to change from the " +
+                        "wheel with the Favourite Key.", 74));
+
+            AnimationProps = Config.Bind(
+                "Click To Idle", "Animation Props And Effects", true,
+                Ordered("Animations are started the way the game starts them for other characters, " +
+                        "with whatever they hold (a phone, a book). Off, only the movement plays.", 73));
 
             CarryOverFromWalkAnywhere();
 
