@@ -30,6 +30,8 @@ namespace SVS_FreeRoam
         private static int _map = int.MinValue;
         private static bool _failed;
         private static bool _active;
+        private static float _distance = 3f;           // where the focus is now
+        private static float _blur;                    // how much of the blur is showing, 0 to 1
 
         internal static void Tick(bool pov, Camera cam, SV.Chara.AI playerAI)
         {
@@ -64,8 +66,18 @@ namespace SVS_FreeRoam
                 else if (ThirdPersonController.AimedCharacter != null)
                     focus = Vector3.Distance(eye, ThirdPersonController.AimedCharacter.transform.position + Vector3.up * 1.3f);
 
-                bool blur = mode != PovDepthOfField.Off && focus >= 0f;
-                float distance = Mathf.Max(0.5f, focus + Plugin.PovFocusOffset.Value);
+                // Eased, so a change of what is in focus (the player, someone aimed at, nothing)
+                // glides instead of snapping: the distance moves, and the blur fades in and out.
+                bool wanted = mode != PovDepthOfField.Off && focus >= 0f;
+                float ease = 1f - Mathf.Exp(-Plugin.PovFocusSpeed.Value * Time.unscaledDeltaTime);
+                if (wanted)
+                    _distance = _blur < 0.01f ? Mathf.Max(0.5f, focus)      // nothing to glide from
+                                              : Mathf.Lerp(_distance, Mathf.Max(0.5f, focus), ease);
+                _blur = Mathf.Lerp(_blur, wanted ? 1f : 0f, ease);
+                if (!wanted && _blur < 0.01f) _blur = 0f;
+
+                bool blur = _blur > 0f;
+                float distance = _distance;
 
                 foreach (var saved in _saved)
                 {
@@ -85,7 +97,7 @@ namespace SVS_FreeRoam
                     float focal = effect.depthOfFieldFocalLength.value;
                     float match = Mathf.Clamp((distance - focal) / Mathf.Max(0.1f, saved.Distance - focal), 0.02f, 4f);
                     effect.depthOfFieldAperture.overrideState = true;
-                    effect.depthOfFieldAperture.value = saved.Aperture * match * Plugin.PovBlurStrength.Value;
+                    effect.depthOfFieldAperture.value = saved.Aperture * match * Plugin.PovBlurStrength.Value * _blur;
                 }
             }
             catch (Exception e)

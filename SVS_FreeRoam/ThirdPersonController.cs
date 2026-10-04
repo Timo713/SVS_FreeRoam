@@ -501,6 +501,7 @@ namespace SVS_FreeRoam
 
             var playerAI = GameChara.PlayerAI;
             if (playerAI != null) SetCharacterHidden(playerAI, false);
+            if (was && playerAI != null) ShowEveryone(playerAI, mapManager);
 
             if (was) CameraRig.RestoreOverview(cam, mapId);
             CameraRig.LearnOverview(cam, mapId, false);
@@ -693,6 +694,23 @@ namespace SVS_FreeRoam
         }
 
         // ------------------------------------------------------- visibility
+
+        /// <summary>
+        /// Leaving third person: undoes the hiding below. Under a menu or an activity scene
+        /// third person hides the player and whoever they are with; switching to the overview
+        /// camera in the middle of one left them hidden, since nothing here runs any more to
+        /// show them again.
+        /// </summary>
+        private static void ShowEveryone(SV.Chara.AI playerAI, MapManager mapManager)
+        {
+            foreach (var ai in Game.AICharas)
+            {
+                var human = ai?.BehaviourCtrl?.ChaCtrl;
+                if (human == null) continue;
+                human._visibleAll_k__BackingField = ai.Pointer == playerAI.Pointer ||
+                                                    ai.BehaviourCtrl.NowMapID == mapManager.MapID;
+            }
+        }
 
         private static void ApplyCharacterVisibility(SV.Chara.AI playerAI, bool uiOpen,
                                                      bool cycling)
@@ -1168,12 +1186,6 @@ namespace SVS_FreeRoam
         /// </summary>
         private static bool DoubleTapSprint(bool allowMouseForward)
         {
-            if (!Plugin.DoubleTapSprint.Value)
-            {
-                _tapSprinting = false;
-                return false;
-            }
-
             int mouse = allowMouseForward && Plugin.Mode.Value != ForwardMode.Off
                 ? (Plugin.Mode.Value == ForwardMode.LeftClickForward ? 0 : 1)
                 : -1;
@@ -1212,13 +1224,6 @@ namespace SVS_FreeRoam
         private static bool WalkRunSwapped()
         {
             bool held = Keys.Held(Plugin.RunningKey, Plugin.RunningKey2);
-
-            if (!Plugin.DoubleTapWalkToggle.Value)
-            {
-                _walkRunLatched = false;
-                _ignoreHeldWalkKey = false;
-                return held;
-            }
 
             if (Keys.Down(Plugin.RunningKey, Plugin.RunningKey2))
             {

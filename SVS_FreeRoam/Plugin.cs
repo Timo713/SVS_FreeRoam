@@ -9,6 +9,14 @@ using UnityEngine;
 
 namespace SVS_FreeRoam
 {
+    /// <summary>How the crouch key works.</summary>
+    public enum CrouchMode
+    {
+        Toggle,
+        DoubleTap,
+        WhilePressed,
+    }
+
     /// <summary>What third person does with the game's depth of field.</summary>
     public enum PovDepthOfField
     {
@@ -191,7 +199,7 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<string> FavoriteAnimations;
         internal static ConfigEntry<bool> AnimationProps;
         internal static ConfigEntry<float> PovBlurStrength;
-        internal static ConfigEntry<float> PovFocusOffset;
+        internal static ConfigEntry<float> PovFocusSpeed;
         internal static ConfigEntry<PovDepthOfField> PovDepthOfFieldMode;
         internal static ConfigEntry<bool> ExtendedAnimations;
         internal static ConfigEntry<bool> CharacterWheel;
@@ -237,8 +245,6 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<KeyCode> GoToMarkedKey2;
         internal static ConfigEntry<KeyCode> SprintKey;
         internal static ConfigEntry<KeyCode> SprintKey2;
-        internal static ConfigEntry<bool> DoubleTapSprint;
-        internal static ConfigEntry<bool> DoubleTapWalkToggle;
         internal static ConfigEntry<bool> MoveInAllViews;
         internal static ConfigEntry<bool> ThirdPersonMode;
         internal static ConfigEntry<bool> GamepadSupport;
@@ -296,7 +302,7 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<bool> OpticalZoom;
         internal static ConfigEntry<float> MinimumFov;
         internal static ConfigEntry<float> CrouchHeight;
-        internal static ConfigEntry<bool> DoubleTapCrouch;
+        internal static ConfigEntry<CrouchMode> CrouchFunction;
 
         // ---- collision -------------------------------------------------------
         internal static ConfigEntry<bool> CameraCollision;
@@ -325,7 +331,19 @@ namespace SVS_FreeRoam
 
             Enabled = Config.Bind(
                 "General", "Enable", true,
-                Ordered("Turns the whole plugin on or off. Takes effect immediately.", 100));
+                Ordered("Turns the whole plugin on or off. Takes effect immediately.", 101));
+
+            Config.Bind(
+                "General", "Reset All Settings", false,
+                new ConfigDescription(
+                    "Puts every setting of this plugin back to its default. Click twice to confirm.",
+                    null,
+                    new ConfigurationManagerAttributes
+                    {
+                        Order = 100,
+                        HideDefaultButton = true,
+                        CustomDrawer = PairDrawer.ResetAll(Config),
+                    }));
 
             ThirdPersonMode = Config.Bind(
                 "General", "PoV Mode", true,
@@ -379,12 +397,13 @@ namespace SVS_FreeRoam
                 "Camera", "Third Person Blur Strength", 1f,
                 Ordered("How strongly the background is blurred in third person, compared with the " +
                         "map's own setting. 1 matches it; 0 is no blur.",
-                        new AcceptableValueRange<float>(0f, 3f), 3));
+                        new AcceptableValueRange<float>(0f, 5f), 3));
 
-            PovFocusOffset = Config.Bind(
-                "Camera", "Third Person Focus Offset", 0f,
-                Ordered("Moves the sharpest point further away than your character (or nearer, " +
-                        "below zero), in metres.", new AcceptableValueRange<float>(-3f, 10f), 2));
+            PovFocusSpeed = Config.Bind(
+                "Camera", "Third Person Focus Speed", 4f,
+                Ordered("How quickly the focus moves when it changes between your character, " +
+                        "someone you aim at and nothing. Lower is a slower, softer change.",
+                        new AcceptableValueRange<float>(0.5f, 20f), 2));
 
             ClickWalk = Config.Bind(
                 "Click To Walk", "Click To Walk", true,
@@ -517,8 +536,8 @@ namespace SVS_FreeRoam
 
             TapPlays = Config.Bind(
                 "Click To Idle", "Tap Plays", IdleTap.RandomAnimation,
-                Ordered("What a tap of the idle button or key does: a random animation, your wheel " +
-                        "of favourites, or the one animation chosen below.", 77));
+                Ordered("What a tap of the idle button or key plays: a random animation, a random " +
+                        "one of your favorites, or the one animation chosen below.", 77));
 
             TapAnimation = Config.Bind(
                 "Click To Idle", "Tap Animation", "Waiting Action 0",
@@ -527,14 +546,16 @@ namespace SVS_FreeRoam
                             ClickIdler.AllAnimations().ConvertAll(ClickIdler.Name).ToArray()), 76));
 
             FavoriteKey = Config.Bind(
-                "Click To Idle", "Favourite Key", KeyCode.F,
+                "Click To Idle", "Favorite Key", KeyCode.F,
                 Ordered("With the wheel open, press this on an animation to add it to your " +
-                        "favourites or take it off. Favourites are starred and listed first.", 75));
+                        "favorites or take it off. Favorites are starred and listed first.", 75));
+            CarryOver(FavoriteKey, "Click To Idle", "Favo" + "urite Key");
 
             FavoriteAnimations = Config.Bind(
-                "Click To Idle", "Favourite Animations", "",
-                Ordered("Your favourites, by name, separated by commas. Easier to change from the " +
-                        "wheel with the Favourite Key.", 74));
+                "Click To Idle", "Favorite Animations", "",
+                Ordered("Your favorites, by name, separated by commas. Easier to change from the " +
+                        "wheel with the Favorite Key.", 74));
+            CarryOver(FavoriteAnimations, "Click To Idle", "Favo" + "urite Animations");
 
             AnimationProps = Config.Bind(
                 "Click To Idle", "Animation Props And Effects", true,
@@ -561,24 +582,11 @@ namespace SVS_FreeRoam
             CarryOver(SprintFactor, "Gamepad");
             CarryOver(SprintFactor, "General");
 
-            DoubleTapSprint = Config.Bind(
-                "Movement", "Double-Tap To Sprint", true,
-                Ordered("Double-tap a direction and hold it to sprint. Works with WASD, the arrow keys " +
-                        "and the mouse button that walks you forward.",
-                        98));
-            CarryOver(DoubleTapSprint, "General");
-
-            DoubleTapCrouch = Config.Bind(
-                "Movement", "Double-Tap To Crouch", true,
-                Ordered("Double-tap the crouch key to stay crouched, and again to stand up. Crouching " +
-                        "only works in first person.", 97));
-
-            DoubleTapWalkToggle = Config.Bind(
-                "Movement", "Double-Tap Toggles Walk/Run", true,
-                Ordered("Double-tap the Walk/Run key to switch between walking and running, instead of " +
-                        "only while it is held.", 99));
-            CarryOver(DoubleTapWalkToggle, "General", "Double-Tap To Toggle Walk/Run");
-            CarryOver(DoubleTapWalkToggle, "General");
+            CrouchFunction = Config.Bind(
+                "Movement", "Crouch Key Function", CrouchMode.Toggle,
+                Ordered("How the crouch key works: Toggle crouches on one press and stands up on the " +
+                        "next; Double Tap does that on a double-tap, and crouches while held; While " +
+                        "Pressed crouches only while held. Crouching only works in first person.", 97));
 
             StaminaAffectsSpeed = Config.Bind(
                 "Movement", "Stamina Affects Speed", true,

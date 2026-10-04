@@ -195,6 +195,37 @@ namespace SVS_FreeRoam
             finally { AssigningFromList = false; }
         }
 
+        private static float _resetArmedUntil;
+
+        /// <summary>A button that puts every setting back to its default, on the second click.</summary>
+        internal static Action<ConfigEntryBase> ResetAll(ConfigFile config)
+        {
+            return _ => Guarded(() =>
+            {
+                bool armed = Time.unscaledTime < _resetArmedUntil;
+                if (!GUILayout.Button(armed ? "Click again to reset every setting" : "Reset All Settings",
+                                      GUILayout.ExpandWidth(true))) return;
+                if (!armed)
+                {
+                    _resetArmedUntil = Time.unscaledTime + 4f;
+                    return;
+                }
+                _resetArmedUntil = 0f;
+
+                int count = 0;
+                foreach (var definition in new List<ConfigDefinition>(config.Keys))
+                {
+                    // Not the note of which button layout the gamepad settings were moved to.
+                    if (definition.Key == "Gamepad Layout" || definition.Key == "Reset All Settings") continue;
+                    var entry = config[definition];
+                    if (Equals(entry.BoxedValue, entry.DefaultValue)) continue;
+                    entry.BoxedValue = entry.DefaultValue;
+                    count++;
+                }
+                Plugin.Logger.LogInfo($"Reset All Settings: {count} settings put back to their defaults.");
+            });
+        }
+
         private static void Guarded(Action body)
         {
             try

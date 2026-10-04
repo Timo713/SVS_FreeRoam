@@ -391,15 +391,25 @@ namespace SVS_FreeRoam
                 return false;
             }
 
-            if (!Plugin.DoubleTapCrouch.Value)
+            var function = Plugin.CrouchFunction.Value;
+            if (function == CrouchMode.WhilePressed)
             {
                 _crouchLatched = false;
                 _ignoreHeldCrouch = false;
                 return held;
             }
 
-            if (Keys.Down(Plugin.CrouchKey, Plugin.CrouchKey2) ||
-                (pad && Keys.Down(Plugin.GamepadCrouchKey, Plugin.GamepadCrouchKey2)))
+            bool down = Keys.Down(Plugin.CrouchKey, Plugin.CrouchKey2) ||
+                        (pad && Keys.Down(Plugin.GamepadCrouchKey, Plugin.GamepadCrouchKey2));
+            if (function == CrouchMode.Toggle)
+            {
+                if (down) _crouchLatched = !_crouchLatched;
+                _ignoreHeldCrouch = false;
+                return _crouchLatched;
+            }
+
+            // Double tap: a double-tap latches, and holding crouches meanwhile.
+            if (down)
             {
                 if (Time.unscaledTime - _lastCrouchTap < 0.3f)
                 {

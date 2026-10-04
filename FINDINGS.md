@@ -2133,3 +2133,27 @@ for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is
   keeps the far background as blurred as the map's own setting does, times "Third
   Person Blur Strength"; rescans on a map change; in first person focuses on the aimed
   character or switches the blur off; and stands down under menus and conversations.
+
+**Round 5 result (developer, 2026-10-04), and round 6 (UNVERIFIED).**
+- Instant sitting, the wheel, favorites and the per-map depth of field work. CONFIRMED.
+- **Voices.** NPCs acting on their own speak during some animations (dumbbell and the
+  exercise ones at the shrine); the player never did, and characters invited to an
+  activity do not either. Those NPCs carry an `ObservableDestroyTrigger` (UniRx).
+  `SV.LowpolyActionVoiceManager` (singleton): `infoTable` (by animation state),
+  `oldAnimationTable`, `LowpolyVoiceProc(AI)`, `LowpolyVoicePlay(id, AI)`. `ClickIdler
+  .Voice` now calls `LowpolyVoiceProc(playerAI)` every frame while an animation we
+  started is playing. UNVERIFIED that this is the call the game makes for NPCs.
+- **The invisible-characters bug, explained.** Under a menu or an activity scene third
+  person hides the player and their companions (`ApplyCharacterVisibility`,
+  `_visibleAll` false). Switching to the overview camera in the middle of the scene
+  stopped that code, so nobody was shown again until third person ran once more or the
+  map changed. `Disable` now calls `ShowEveryone` on the way out of third person.
+- A 1 m reach lost the seats behind desks (cafe, classroom): the point cannot be walked
+  up to that closely. Back to 1.5 m; the player is still put on the point, so no walk.
+- Tap Plays "Random Favorite" plays one (not a wheel); standing, animations made for a
+  chair or desk are left out (`AnimationCtrlManager.posePtnChairIDs` / `posePtnDeskIDs`).
+- Settings: "Crouch Key Function" (Toggle / Double Tap / While Pressed) replaces
+  Double-Tap To Crouch; double-tap sprint and double-tap walk/run are always on;
+  "Reset All Settings" is a custom drawer button under Enable (two clicks).
+- Depth of field: the focus distance and the blur's weight are eased
+  (`1 - exp(-speed * dt)`), "Third Person Focus Speed"; the offset setting is gone.

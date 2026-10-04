@@ -13,7 +13,7 @@ namespace SVS_FreeRoam
     public enum IdleTap
     {
         RandomAnimation,
-        FavoritesWheel,
+        RandomFavorite,
         ChosenAnimation,
     }
 
@@ -29,7 +29,7 @@ namespace SVS_FreeRoam
         private const float ClickSlop = 8f;            // pixels a click may drift and still be a click
         private const float BodyHeight = 1.5f;         // feet to about the head, for clicks on yourself
         private const float HoldTime = 0.35f;          // seconds held before the wheel opens
-        private const float SpotReach = 1f;            // third person: how near a seat has to be
+        private const float SpotReach = 1.5f;          // third person: how near a seat has to be
         private const float SpotHeight = 0.4f;         // where on a seat a click is aimed, above its base
         private const string Star = "★ ";
 
@@ -246,6 +246,38 @@ namespace SVS_FreeRoam
             _playing = id == Resting(playerAI) ? -1 : id;
         }
 
+        /// <summary>An animation made for a chair or a desk.</summary>
+        private static bool NeedsSeat(int id)
+        {
+            var manager = SingletonInitializerAsync<AnimationCtrlManager>.Instance;
+            if (manager?.posePtnChairIDs != null && manager.posePtnChairIDs.Contains(id)) return true;
+            if (manager?.posePtnDeskIDs != null && manager.posePtnDeskIDs.Contains(id)) return true;
+            string name = ((AnimationCtrlManager.Animation)id).ToString();
+            return name.Contains("chair") || name.Contains("desk");
+        }
+
+        private static bool _voiceFailed;
+
+        /// <summary>
+        /// The voice lines map characters speak during some animations (exercise...). The game
+        /// runs this for characters acting on their own; for the player nothing does, so we
+        /// do while an animation we started is playing.
+        /// </summary>
+        private static void Voice(SV.Chara.AI playerAI)
+        {
+            if (_voiceFailed || _playing < 0 || !Plugin.AnimationProps.Value) return;
+            try
+            {
+                if (!PlayingOurs(playerAI)) return;
+                SingletonInitializerAsync<LowpolyActionVoiceManager>.Instance?.LowpolyVoiceProc(playerAI);
+            }
+            catch (Exception e)
+            {
+                _voiceFailed = true;
+                Plugin.Logger.LogWarning("Animation voices are off: the game's voice call failed (" + e.Message + ").");
+            }
+        }
+
         private static bool PlayingOurs(SV.Chara.AI playerAI)
         {
             var manager = SingletonInitializerAsync<AnimationCtrlManager>.Instance;
@@ -264,23 +296,23 @@ namespace SVS_FreeRoam
                 return;
             }
 
+            var ids = Fitting(playerAI);
             switch (Plugin.TapPlays.Value)
             {
-                case IdleTap.FavoritesWheel:
+                case IdleTap.RandomFavorite:
                     var favorites = Favorites();
                     if (favorites.Count == 0)
                     {
-                        Notice.Tell("No favourite animations yet: hold the button for the wheel and " +
+                        Notice.Tell("No favorite animations yet: hold the button for the wheel and " +
                                     $"press {Plugin.FavoriteKey.Value} on an animation.", 6f);
-                        return;
+                        break;
                     }
-                    var centre = thirdPerson ? new Vector2(Screen.width, Screen.height) * 0.5f
-                                             : (Vector2)Input.mousePosition;
-                    OpenAnimationWheel(favorites, centre, thirdPerson);
-                    _sticky = true;
-                    _stickyThirdPerson = thirdPerson;
-                    IdleWheel.Sticky = true;
-                    return;
+                    // Seated: the favorites this seat offers. Standing: those that need no
+                    // seat, or the character would sit on air.
+                    bool seated = CurrentSeat(playerAI) != null;
+                    var usable = favorites.FindAll(id => seated ? ids.Contains(id) : !NeedsSeat(id));
+                    if (usable.Count > 0) ids = usable;
+                    break;
 
                 case IdleTap.ChosenAnimation:
                     foreach (int id in AllAnimations())
@@ -288,7 +320,6 @@ namespace SVS_FreeRoam
                     break;
             }
 
-            var ids = Fitting(playerAI);
             // Not the plain waiting poses: those are what the character does anyway.
             int resting = Resting(playerAI);
             var special = ids.FindAll(id => id != resting);
@@ -298,13 +329,13 @@ namespace SVS_FreeRoam
 
         // ------------------------------------------------------------------ wheels
 
-        /// <summary>What the held wheel lists: what fits here, the favourites, and with
+        /// <summary>What the held wheel lists: what fits here, the favorites, and with
         /// Extended Animations everything else.</summary>
         private static List<int> WheelAnimations(SV.Chara.AI playerAI)
         {
             var ids = new List<int>();
             var fitting = Fitting(playerAI);
-            // Seated, the seat's own come first; standing, the favourites do.
+            // Seated, the seat's own come first; standing, the favorites do.
             if (CurrentSeat(playerAI) != null) ids.AddRange(fitting);
             foreach (int id in Favorites()) if (!ids.Contains(id)) ids.Add(id);
             foreach (int id in fitting) if (!ids.Contains(id)) ids.Add(id);
@@ -352,7 +383,7 @@ namespace SVS_FreeRoam
         }
 
         /// <summary>
-        /// While a wheel is open: the favourite key stars the animation under the pointer, and
+        /// While a wheel is open: the favorite key stars the animation under the pointer, and
         /// a left click chooses, whichever button opened the wheel. True when the wheel was
         /// closed by that click.
         /// </summary>
@@ -417,6 +448,7 @@ namespace SVS_FreeRoam
         internal static void Update(SimulationScene scene, SV.Chara.AI playerAI)
         {
             if (Notice.On) ListMapAnimations(playerAI);
+            Voice(playerAI);
 
             if (_swallow && !Input.GetMouseButton(0) && !Input.GetMouseButton(1) && !Input.GetMouseButton(2))
             {
