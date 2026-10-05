@@ -122,12 +122,14 @@ namespace SVS_FreeRoam
             Plugin.WheelSet.Value == AnimationSet.Favorites2 ? 2
             : Plugin.WheelSet.Value == AnimationSet.Favorites3 ? 3 : 1;
 
-        private static void ToggleFavorite(int id)
+        private static void ToggleFavorite(int id, int number)
         {
-            var ids = Favorites(ActiveCollection);
+            var ids = Favorites(number);
             if (!ids.Remove(id)) ids.Add(id);
-            Collection(ActiveCollection).Value = string.Join(", ", ids.ConvertAll(Name));
+            Collection(number).Value = string.Join(", ", ids.ConvertAll(Name));
         }
+
+        private static List<int>[] Collections() => new[] { Favorites(1), Favorites(2), Favorites(3) };
 
         /// <summary>Every animation any spot of this map offers, for any activity.</summary>
         private static List<int> MapAnimations(SV.Chara.AI playerAI)
@@ -429,6 +431,12 @@ namespace SVS_FreeRoam
             }
             if (!played) playerAI.SetLowpolyAnimation(id, false, true, 0.25f, true);
             if (Plugin.AnimationProps.Value) StartVoice(playerAI, id);
+
+            _held = id != Resting(playerAI) && CurrentSeat(playerAI) != null;
+            _heldLogged = false;
+            _heldSince = Time.unscaledTime;
+            _heldAt = playerAI.transform.position;
+            _heldRotation = playerAI.transform.rotation;
             _playing = id == Resting(playerAI) ? -1 : id;
         }
 
@@ -446,6 +454,32 @@ namespace SVS_FreeRoam
         private static bool _voiceFailed;
         private static bool _voicesListed;
         private static float _audioListAt = -1f;
+        private static readonly HashSet<IntPtr> _voicesBefore = new HashSet<IntPtr>();
+        private static float _voiceSeekUntil;
+        private static AudioSource _voiceSource;
+
+        /// <summary>A playing voice line: the game routes them to its "PCM" mixer group.</summary>
+        private static bool IsVoice(AudioSource source) =>
+            source != null && source.isPlaying && source.outputAudioMixerGroup != null &&
+            source.outputAudioMixerGroup.name == "PCM";
+
+        /// <summary>Finds the line just started for the player and keeps it audible.</summary>
+        private static void KeepVoiceAudible()
+        {
+            if (_voiceSource == null && Time.unscaledTime < _voiceSeekUntil)
+            {
+                foreach (var source in UnityEngine.Object.FindObjectsOfType<AudioSource>())
+                {
+                    if (!IsVoice(source) || _voicesBefore.Contains(source.Pointer)) continue;
+                    _voiceSource = source;
+                    Notice.Log($"Idle voice: found the line '{(source.clip != null ? source.clip.name : "none")}' at volume {source.volume:0.00}; turning it up.");
+                    break;
+                }
+            }
+            if (_voiceSource == null) return;
+            if (!_voiceSource.isPlaying) { _voiceSource = null; return; }
+            if (_voiceSource.volume < 0.99f) _voiceSource.volume = 1f;
+        }
 
         /// <summary>
         /// Asks the game's voice table for this animation's line and plays it. Logs what it
@@ -481,8 +515,19 @@ namespace SVS_FreeRoam
                     break;
                 }
 
+                // The line it starts is silent (volume 0 on its audio source): note which
+                // voices were already playing, so the new one can be found and turned up.
+                _voicesBefore.Clear();
+                foreach (var source in UnityEngine.Object.FindObjectsOfType<AudioSource>())
+                    if (IsVoice(source)) _voicesBefore.Add(source.Pointer);
+
                 bool played = found && voices.LowpolyVoicePlay(key, playerAI);
-                if (played) _audioListAt = Time.unscaledTime + 1f;
+                if (played)
+                {
+                    _audioListAt = Time.unscaledTime + 1f;
+                    _voiceSeekUntil = Time.unscaledTime + 1f;
+                    _voiceSource = null;
+                }
                 Notice.Log($"Idle voice: animation {id} ({Name(id)}) hash {hash}, animator state now {state}; " +
                            $"table has {table.Count} entries; match {found} {what} key {key}; played {played}.");
 
@@ -514,6 +559,14 @@ namespace SVS_FreeRoam
         /// </summary>
         private static void Voice(SV.Chara.AI playerAI)
         {
+            try { KeepVoiceAudible(); }
+            catch (Exception e)
+            {
+                _voiceSource = null;
+                _voiceSeekUntil = 0f;
+                Notice.Log("Idle voice: could not turn the line up (" + e.Message + ").");
+            }
+
             // The game says it played the line and nothing is heard: a second after each
             // one, with Debug Info on, list what the game is really playing and how loud.
             if (_audioListAt < 0f || Time.unscaledTime < _audioListAt) return;
@@ -597,20 +650,91 @@ namespace SVS_FreeRoam
             return ids;
         }
 
-        private static string WheelLabel(int id, List<int> favorites) =>
-            (favorites.Contains(id) ? Star : "") + Name(id);
+        /// <summary>The animation's name, starred with the numbers of the collections it is in.</summary>
+        private static string WheelLabel(int id, List<int>[] collections)
+        {
+            string marks = "";
+            for (int n = 0; n < collections.Length; n++)
+                if (collections[n].Contains(id)) marks += (n + 1).ToString();
+            return marks.Length == 0 ? Name(id) : "\u2605" + marks + " " + Name(id);
+        }
+
+        /// <summary>
+        /// A choice from the wheel. An animation made for a seat, chosen while standing next
+        /// to one, first sits the player there; the animation follows once seated.
+        /// </summary>
+        private static void PlayChoice(SV.Chara.AI playerAI, int id)
+        {
+            if (playerAI == null) return;
+            if (NeedsSeat(id) && CurrentSeat(playerAI) == null)
+            {
+                var spot = NearbySpot(playerAI, out int job);
+                if (spot != null)
+                {
+                    UseSpot(playerAI, spot, job);
+                    _pendingId = id;
+                    _pendingAt = Time.unscaledTime + 0.7f;
+                    return;
+                }
+            }
+            Play(playerAI, id);
+        }
+
+        private static int _pendingId = -1;
+        private static float _pendingAt;
+
+        // Seated with an animation of ours: where the player was put. Some animations (the
+        // meals at the cafe's tables) make the game slide the player off the seat a moment
+        // later; while this is set they are kept there.
+        private static bool _held;
+        private static bool _heldLogged;
+        private static float _heldSince;
+        private static Vector3 _heldAt;
+        private static Quaternion _heldRotation;
+
+        private static void SeatUpkeep(SV.Chara.AI playerAI)
+        {
+            if (_pendingId >= 0 && Time.unscaledTime >= _pendingAt)
+            {
+                int id = _pendingId;
+                _pendingId = -1;
+                if (CurrentSeat(playerAI) != null) Play(playerAI, id);
+                else Notice.Log($"Idle: not seated after all, so {Name(id)} was not played.");
+            }
+
+            if (!_held) return;
+            // (The animation takes a moment to start: not judged by it for the first second.)
+            bool leaving = (Time.unscaledTime - _heldSince > 1f && !PlayingOurs(playerAI)) || Walker.IsOurTarget(playerAI.BehaviourCtrl) ||
+                           Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.S) ||
+                           Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.UpArrow) ||
+                           Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.LeftArrow) ||
+                           Input.GetKey(KeyCode.RightArrow) ||
+                           (Cursor.lockState == CursorLockMode.Locked && !BlocksInput &&
+                            (Input.GetMouseButton(0) || Input.GetMouseButton(1)));
+            if (leaving) { _held = false; return; }
+
+            var t = playerAI.transform;
+            float moved = Vector3.Distance(t.position, _heldAt);
+            if (moved < 0.02f) return;
+            if (!_heldLogged)
+            {
+                _heldLogged = true;
+                Notice.Log($"Idle: the game moved the seated player {moved:0.00} m (to {t.position}); keeping them on the seat.");
+            }
+            t.SetPositionAndRotation(_heldAt, _heldRotation);
+        }
 
         private static void OpenAnimationWheel(List<int> ids, Vector2 centre, bool virtualPointer)
         {
-            var favorites = Favorites();
+            var collections = Collections();
             var labels = new List<string>();
             _actions = new List<Action>();
             _wheelIds = ids;
             foreach (int id in ids)
             {
                 int chosen = id;
-                labels.Add(WheelLabel(id, favorites));
-                _actions.Add(() => Play(GameChara.PlayerAI, chosen));
+                labels.Add(WheelLabel(id, collections));
+                _actions.Add(() => PlayChoice(GameChara.PlayerAI, chosen));
             }
             IdleWheel.Open(labels, centre, virtualPointer);
         }
@@ -645,12 +769,18 @@ namespace SVS_FreeRoam
             if (!IdleWheel.IsOpen) return false;
 
             var highlighted = IdleWheel.Highlighted;
+            // The favorite key stars it in the collection being shown (else the first); the
+            // number keys 1 to 3 say which collection outright.
+            int collection = Input.GetKeyDown(Plugin.FavoriteKey.Value) ? ActiveCollection
+                           : Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1) ? 1
+                           : Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2) ? 2
+                           : Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3) ? 3 : 0;
             if (_wheelIds != null && highlighted != null && highlighted.Value < _wheelIds.Count &&
-                Input.GetKeyDown(Plugin.FavoriteKey.Value))
+                collection != 0)
             {
                 int id = _wheelIds[highlighted.Value];
-                ToggleFavorite(id);
-                IdleWheel.SetLabel(highlighted.Value, WheelLabel(id, Favorites()));
+                ToggleFavorite(id, collection);
+                IdleWheel.SetLabel(highlighted.Value, WheelLabel(id, Collections()));
             }
 
             if (!Input.GetMouseButtonDown(0)) return false;
@@ -702,6 +832,7 @@ namespace SVS_FreeRoam
         {
             if (Notice.On) ListMapAnimations(playerAI);
             Voice(playerAI);
+            SeatUpkeep(playerAI);
 
             if (_swallow && !Input.GetMouseButton(0) && !Input.GetMouseButton(1) && !Input.GetMouseButton(2))
             {

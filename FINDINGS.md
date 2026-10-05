@@ -2211,3 +2211,28 @@ for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is
   replaces Extended Animations, Tap Plays and Tap Animation; a tap plays a random one
   of the set. Three favorite collections. `HideSettingName` added to our
   ConfigurationManagerAttributes copy for the full-row Reset button.
+
+**Round 8 result (developer, 2026-10-04), and round 9 (UNVERIFIED).**
+- Seats by what a spot offers: the classroom's desks and the cafe's tables seat the
+  player through the game's own walk (job = the table key). CONFIRMED. Station and beach
+  still work.
+- **Voices: the line does start, at volume 0.** One second after `LowpolyVoicePlay`:
+  `c04/sv_004_ms_000_422 ... volume 0.00 mute False 3D 0.0 ... group PCM`, an audio
+  source under the personality's voice object (`c04`), not under the player. CONFIRMED.
+  So the game plays the player's line muted (or fades it by something we do not
+  drive). Round 9 notes the PCM sources playing before the call, finds the new one
+  after it and sets its volume to 1 every frame while it plays (`KeepVoiceAudible`).
+- At the cafe, playing a meal animation on a seat made the game slide the player off
+  the seat about a second later, animation still running; Desk Wait and Smart Phone
+  Desk (the seat's own) stay. LIKELY the idle tree undoing the seat's offset when the
+  animation is not one of the seat's. While an animation of ours plays on a seat the
+  player is now kept at the seated position (`SeatUpkeep`), released by a movement key,
+  a walk, or the animation ending; it logs once how far the game moved them.
+- A sitting animation chosen from the wheel while standing next to a seat sits the
+  player there first (`PlayChoice`: `UseSpot`, then the animation 0.7 s later).
+- Markers are the player's own ring, a child of the player: placed before the player
+  moves in the same pass, they jumped for a frame on every turn. `SteadyMarker` puts
+  the ring back after `MovePlayer`. Leaving third person now always puts the ring's
+  local position back (it was only done with Overview Restore on).
+- Favorites: number keys 1-3 on the wheel toggle that collection; labels show the star
+  with the collection numbers. Spot Click Size default 0.6.

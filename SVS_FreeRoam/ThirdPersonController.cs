@@ -231,6 +231,7 @@ namespace SVS_FreeRoam
                 // read as one frame of "forward", which drove the player by hand and then
                 // stopped -- cancelling the walk the button had just started.
                 MovePlayer(cam, playerAI, allowMouseForward: !cursorFree && !ClickIdler.BlocksInput);
+                SteadyMarker(playerAI);
             }
             else if (_handling)
             {
@@ -508,6 +509,9 @@ namespace SVS_FreeRoam
 
             if (was && Plugin.OverviewRestore.Value == OverviewRestoreMode.On)
                 RestorePlayerRing(playerAI);
+            // Either way the ring goes back under the player: it was last a marker somewhere.
+            else if (was && _ringCaptured && playerAI != null && playerAI.objCircle != null)
+                playerAI.objCircle.transform.localPosition = _ringLocalPosition;
         }
 
         // ------------------------------------------------------- player ring
@@ -1033,6 +1037,22 @@ namespace SVS_FreeRoam
             if (playerAI.objCircle == null) return;
             playerAI.objCircle.active = true;
             playerAI.objCircle.gameObject.transform.position = position;
+            _markerAt = position;
+            _markerFrame = Time.frameCount;
+        }
+
+        private static Vector3 _markerAt;
+        private static int _markerFrame = -1;
+
+        /// <summary>
+        /// The marker is the player's own ring, so it moves and turns with the player. Put
+        /// back where it belongs after the player has moved this frame, or it jumps aside for
+        /// a frame whenever the player turns next to it.
+        /// </summary>
+        private static void SteadyMarker(SV.Chara.AI playerAI)
+        {
+            if (_markerFrame != Time.frameCount || playerAI.objCircle == null) return;
+            playerAI.objCircle.gameObject.transform.position = _markerAt;
         }
 
         // The game's scene fade is one shared overlay, white unless something (SVS_FadeController)

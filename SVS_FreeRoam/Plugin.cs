@@ -424,7 +424,7 @@ namespace SVS_FreeRoam
                         "it, with the animation the game plays at that spot.", 70));
 
             SpotClickSize = Config.Bind(
-                "Click To Walk", "Spot Click Size", 0.8f,
+                "Click To Walk", "Spot Click Size", 0.6f,
                 Ordered("How close to a seat or special spot the cursor has to be for the click to " +
                         "count as a click on it, in metres.", new AcceptableValueRange<float>(0.2f, 3f), 65));
 
@@ -534,9 +534,10 @@ namespace SVS_FreeRoam
 
             FavoriteKey = Config.Bind(
                 "Click To Idle", "Favorite Key", KeyCode.F,
-                Ordered("With the wheel open, press this on an animation to add it to a favorite " +
-                        "collection or take it off: the collection chosen as Animation Set, else " +
-                        "Favorites 1. Favorites are starred and listed first.", 75));
+                Ordered("With the wheel open, press this on an animation to add it to Favorites 1 " +
+                        "or take it off. The number keys 1, 2 and 3 do the same for that " +
+                        "collection. Favorites are starred with their collection's number and " +
+                        "listed first.", 75));
             CarryOver(FavoriteKey, "Click To Idle", "Favo" + "urite Key");
 
             Favorites1 = Config.Bind(
