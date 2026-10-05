@@ -32,4 +32,7 @@ internal sealed class ConfigurationManagerAttributes
     /// <summary>True hides ConfigurationManager's own Reset button for this setting.</summary>
     public bool? HideDefaultButton;
 
+    /// <summary>Show only the drawer, across the whole row, without the setting's name.</summary>
+    public bool? HideSettingName;
+
 }

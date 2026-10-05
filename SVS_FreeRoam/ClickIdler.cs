@@ -9,12 +9,16 @@ using UnityEngine;
 
 namespace SVS_FreeRoam
 {
-    /// <summary>What a tap of the idle button or key plays.</summary>
-    public enum IdleTap
+    /// <summary>Which animations the wheel lists, and a tap picks from.</summary>
+    public enum AnimationSet
     {
-        RandomAnimation,
-        RandomFavorite,
-        ChosenAnimation,
+        Fitting,
+        MapAnimations,
+        Sitting,
+        Favorites1,
+        Favorites2,
+        Favorites3,
+        All,
     }
 
     /// <summary>
@@ -29,7 +33,7 @@ namespace SVS_FreeRoam
         private const float ClickSlop = 8f;            // pixels a click may drift and still be a click
         private const float BodyHeight = 1.5f;         // feet to about the head, for clicks on yourself
         private const float HoldTime = 0.35f;          // seconds held before the wheel opens
-        private const float SpotReach = 1.5f;          // third person: how near a seat has to be
+        private const float SpotReach = 1f;            // third person: how near a seat has to be
         private const float SpotHeight = 0.4f;         // where on a seat a click is aimed, above its base
         private const string Star = "★ ";
 
@@ -87,10 +91,14 @@ namespace SVS_FreeRoam
             return _all;
         }
 
-        private static List<int> Favorites()
+        private static BepInEx.Configuration.ConfigEntry<string> Collection(int number) =>
+            number == 2 ? Plugin.Favorites2 : number == 3 ? Plugin.Favorites3 : Plugin.Favorites1;
+
+        /// <summary>One of the three favorite collections.</summary>
+        private static List<int> Favorites(int number)
         {
             var ids = new List<int>();
-            foreach (string part in Plugin.FavoriteAnimations.Value.Split(','))
+            foreach (string part in Collection(number).Value.Split(','))
             {
                 string name = part.Trim();
                 foreach (int id in AllAnimations())
@@ -100,11 +108,120 @@ namespace SVS_FreeRoam
             return ids;
         }
 
+        /// <summary>Every favorite, of all three collections.</summary>
+        private static List<int> Favorites()
+        {
+            var ids = Favorites(1);
+            for (int number = 2; number <= 3; number++)
+                foreach (int id in Favorites(number)) if (!ids.Contains(id)) ids.Add(id);
+            return ids;
+        }
+
+        /// <summary>The collection the Favorite Key changes: the one being shown, else the first.</summary>
+        private static int ActiveCollection =>
+            Plugin.WheelSet.Value == AnimationSet.Favorites2 ? 2
+            : Plugin.WheelSet.Value == AnimationSet.Favorites3 ? 3 : 1;
+
         private static void ToggleFavorite(int id)
         {
-            var ids = Favorites();
+            var ids = Favorites(ActiveCollection);
             if (!ids.Remove(id)) ids.Add(id);
-            Plugin.FavoriteAnimations.Value = string.Join(", ", ids.ConvertAll(Name));
+            Collection(ActiveCollection).Value = string.Join(", ", ids.ConvertAll(Name));
+        }
+
+        /// <summary>Every animation any spot of this map offers, for any activity.</summary>
+        private static List<int> MapAnimations(SV.Chara.AI playerAI)
+        {
+            var ids = new List<int>();
+            var table = Spots(playerAI, out _);
+            if (table != null)
+            {
+                foreach (var pair in table)
+                {
+                    var points = pair.Value?.points;
+                    if (points == null) continue;
+                    for (int i = 0; i < points.Count; i++)
+                    {
+                        var details = points[i]?.urouroDetails;
+                        if (details == null) continue;
+                        for (int d = 0; d < details.Count; d++)
+                        {
+                            var animations = details[d]?.animations;
+                            if (animations == null) continue;
+                            for (int k = 0; k < animations.Count; k++)
+                                if (!ids.Contains(animations[k].animMotion)) ids.Add(animations[k].animMotion);
+                        }
+                    }
+                }
+            }
+            if (ids.Count == 0) ids.AddRange(DefaultStanding);
+            return ids;
+        }
+
+        /// <summary>The animations of the set chosen in the settings.</summary>
+        private static List<int> SetAnimations(SV.Chara.AI playerAI)
+        {
+            switch (Plugin.WheelSet.Value)
+            {
+                case AnimationSet.MapAnimations: return MapAnimations(playerAI);
+                case AnimationSet.Sitting: return AllAnimations().FindAll(NeedsSeat);
+                case AnimationSet.All: return new List<int>(AllAnimations());
+                case AnimationSet.Favorites1:
+                case AnimationSet.Favorites2:
+                case AnimationSet.Favorites3:
+                    var favorites = Favorites(ActiveCollection);
+                    if (favorites.Count > 0) return favorites;
+                    Notice.Tell("That favorite collection is empty: with another animation set chosen, " +
+                                $"hold for the wheel and press {Plugin.FavoriteKey.Value} on an animation.", 6f);
+                    break;
+            }
+            return Fitting(playerAI);
+        }
+
+        /// <summary>A spot's offer for one activity includes sitting.</summary>
+        private static bool SeatDetail(MovePointInfo.JobDetail detail)
+        {
+            var animations = detail?.animations;
+            if (animations == null) return false;
+            for (int k = 0; k < animations.Count; k++)
+                if (NeedsSeat(animations[k].animMotion)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Whether a wander point, as listed under one activity, is somewhere to sit: by its
+        /// pose, or because what it offers for that activity is a sitting animation. The
+        /// classroom's desks are "standing" points that offer Study's desk animations.
+        /// </summary>
+        private static bool IsSeat(MovePointInfo point, int job)
+        {
+            if (!IsStanding(point)) return true;
+            var details = point.urouroDetails;
+            if (details == null) return false;
+            for (int i = 0; i < details.Count; i++)
+                if (details[i] != null && (int)details[i].job == job && SeatDetail(details[i])) return true;
+            return false;
+        }
+
+        private static bool IsSeat(MovePointInfo point)
+        {
+            if (!IsStanding(point)) return true;
+            var details = point.urouroDetails;
+            if (details == null) return false;
+            for (int i = 0; i < details.Count; i++)
+                if (SeatDetail(details[i])) return true;
+            return false;
+        }
+
+        // The seat last sat on through us, and for which activity: what it offers for that
+        // activity is what can be played there.
+        private static MovePointInfo _usedSpot;
+        private static int _usedJob;
+
+        internal static void NoteSpot(MovePointInfo spot, int job)
+        {
+            _usedSpot = spot;
+            _usedJob = job;
         }
 
         private static Il2CppSystem.Collections.Generic.Dictionary<int, PointList.ListInfo> Spots(
@@ -118,7 +235,50 @@ namespace SVS_FreeRoam
 
             MapCollisionCtrl.Info info = null;
             mapManager.pointInfoTable?.TryGetValue(mapId, out info);
-            return info?.pointList?.urouroTable;
+            _pointList = info?.pointList;
+            return _pointList?.urouroTable;
+        }
+
+        // The map's whole point list, as of the last Spots call.
+        private static PointList _pointList;
+
+        // A seat borrowed from an activity (study, a meal): the game only seats characters
+        // there during that activity, so we do it by hand. Which point, where the body is,
+        // and what can be played there.
+        private static MovePointInfo _borrowed;
+        private static Vector3 _borrowedAt;
+        private static List<int> _borrowedIds;
+        // Which table NearbySpot's last answer came from: 0 the wander points, else an activity's.
+        private static int _nearbyTable;
+
+        private static readonly string[] TableNames = { "urouro", "solo", "with", "everyone", "pc" };
+
+        /// <summary>The activity tables: 1 solo, 2 with, 3 everyone, 4 pc.</summary>
+        private static Il2CppSystem.Collections.Generic.Dictionary<int, PointList.ListInfo> Table(int table) =>
+            _pointList == null ? null
+            : table == 1 ? _pointList.soloTable
+            : table == 2 ? _pointList.withTable
+            : table == 3 ? _pointList.everyoneTable
+            : _pointList.pcTable;
+
+        private static Il2CppSystem.Collections.Generic.List<MovePointInfo.JobDetail> Details(MovePointInfo point, int table) =>
+            table == 1 ? point.soloDetails
+            : table == 2 ? point.withDetails
+            : table == 3 ? point.everyoneDetails
+            : point.pcDetails;
+
+        /// <summary>What a point offers for one activity, if it has animations for it.</summary>
+        private static MovePointInfo.JobDetail Detail(MovePointInfo point, int table, int job)
+        {
+            var details = Details(point, table);
+            if (details == null) return null;
+            for (int i = 0; i < details.Count; i++)
+            {
+                var detail = details[i];
+                if (detail != null && (int)detail.job == job && detail.animations != null &&
+                    detail.animations.Count > 0) return detail;
+            }
+            return null;
         }
 
         /// <summary>A spot to stand at, as opposed to a chair, a desk or a place on the ground.</summary>
@@ -133,10 +293,26 @@ namespace SVS_FreeRoam
 
         private static void AddAnimations(MovePointInfo point, List<int> ids)
         {
+            if (_borrowed != null && point.Pointer == _borrowed.Pointer)
+            {
+                foreach (int id in _borrowedIds) if (!ids.Contains(id)) ids.Add(id);
+                return;
+            }
             var details = point.urouroDetails;
             if (details == null) return;
+
+            // The seat we sat on: only what it offers for the activity it was used for.
+            bool used = _usedSpot != null && point.Pointer == _usedSpot.Pointer;
+            if (used)
+            {
+                used = false;
+                for (int i = 0; i < details.Count; i++)
+                    if (details[i] != null && (int)details[i].job == _usedJob) used = true;
+            }
+
             for (int i = 0; i < details.Count; i++)
             {
+                if (used && details[i] != null && (int)details[i].job != _usedJob) continue;
                 var animations = details[i]?.animations;
                 if (animations == null) continue;
                 for (int k = 0; k < animations.Count; k++)
@@ -169,9 +345,17 @@ namespace SVS_FreeRoam
         /// <summary>The seat or other special spot the player is using, if any.</summary>
         private static MovePointInfo CurrentSeat(SV.Chara.AI playerAI)
         {
+            if (_borrowed != null)
+            {
+                if (Vector3.Distance(playerAI.transform.position, _borrowedAt) < 0.5f) return _borrowed;
+                Notice.Log($"Idle: no longer on the borrowed seat (now at {playerAI.transform.position}, " +
+                           $"seat at {_borrowedAt}).");
+                _borrowed = null;
+            }
+
             var bctrl = playerAI.BehaviourCtrl;
             var point = bctrl?.target?.pInfo;
-            return point != null && !Walker.IsOurTarget(bctrl) && !IsStanding(point) &&
+            return point != null && !Walker.IsOurTarget(bctrl) && IsSeat(point) &&
                    Vector3.Distance(SeatPosition(point), playerAI.transform.position) < 1f
                 ? point : null;
         }
@@ -201,6 +385,7 @@ namespace SVS_FreeRoam
 
         private static Vector3 SeatPosition(MovePointInfo point)
         {
+            if (_borrowed != null && point.Pointer == _borrowed.Pointer) return _borrowedAt;
             var details = point.urouroDetails;
             if (details != null)
                 for (int i = 0; i < details.Count; i++)
@@ -243,6 +428,7 @@ namespace SVS_FreeRoam
                 }
             }
             if (!played) playerAI.SetLowpolyAnimation(id, false, true, 0.25f, true);
+            if (Plugin.AnimationProps.Value) StartVoice(playerAI, id);
             _playing = id == Resting(playerAI) ? -1 : id;
         }
 
@@ -252,11 +438,74 @@ namespace SVS_FreeRoam
             var manager = SingletonInitializerAsync<AnimationCtrlManager>.Instance;
             if (manager?.posePtnChairIDs != null && manager.posePtnChairIDs.Contains(id)) return true;
             if (manager?.posePtnDeskIDs != null && manager.posePtnDeskIDs.Contains(id)) return true;
+            if (id == 14 || id == 16) return true;                 // waiting actions 1 and 3: the chair ones
             string name = ((AnimationCtrlManager.Animation)id).ToString();
             return name.Contains("chair") || name.Contains("desk");
         }
 
         private static bool _voiceFailed;
+        private static bool _voicesListed;
+        private static float _audioListAt = -1f;
+
+        /// <summary>
+        /// Asks the game's voice table for this animation's line and plays it. Logs what it
+        /// finds with Debug Info on, since how the table is keyed is not known for sure.
+        /// </summary>
+        private static void StartVoice(SV.Chara.AI playerAI, int id)
+        {
+            if (_voiceFailed) return;
+            try
+            {
+                var voices = SingletonInitializerAsync<LowpolyActionVoiceManager>.Instance;
+                var animations = SingletonInitializerAsync<AnimationCtrlManager>.Instance;
+                var table = voices?.infoTable;
+                if (table == null || animations == null)
+                {
+                    Notice.Log("Idle voice: the game's voice table is not there.");
+                    return;
+                }
+
+                int hash = animations.GetHash(id);
+                int state = playerAI.animator != null
+                    ? playerAI.animator.GetCurrentAnimatorStateInfo(0).shortNameHash : 0;
+                bool found = false;
+                int key = 0;
+                string what = "";
+                foreach (var pair in table)
+                {
+                    var info = pair.Value;
+                    if (info.hash != hash) continue;
+                    found = true;
+                    key = pair.Key;
+                    what = $"'{info.name}' loop {info.IsLoop} noMale {info.IsNoMale} bundles {info.bundleInfos?.Count ?? -1}";
+                    break;
+                }
+
+                bool played = found && voices.LowpolyVoicePlay(key, playerAI);
+                if (played) _audioListAt = Time.unscaledTime + 1f;
+                Notice.Log($"Idle voice: animation {id} ({Name(id)}) hash {hash}, animator state now {state}; " +
+                           $"table has {table.Count} entries; match {found} {what} key {key}; played {played}.");
+
+                if (!_voicesListed && Notice.On)
+                {
+                    _voicesListed = true;
+                    var sb = new StringBuilder("Idle voice: the game's voice table:");
+                    foreach (var pair in table)
+                        sb.Append("\n  key ").Append(pair.Key).Append(" hash ").Append(pair.Value.hash)
+                          .Append(" '").Append(pair.Value.name).Append("' loop ").Append(pair.Value.IsLoop)
+                          .Append(" noMale ").Append(pair.Value.IsNoMale);
+                    sb.Append("\n  animation hashes:");
+                    foreach (int other in AllAnimations())
+                        sb.Append(' ').Append(other).Append('=').Append(animations.GetHash(other));
+                    Notice.Log(sb.ToString());
+                }
+            }
+            catch (Exception e)
+            {
+                _voiceFailed = true;
+                Plugin.Logger.LogWarning("Animation voices are off: reading the game's voice table failed (" + e.Message + ").");
+            }
+        }
 
         /// <summary>
         /// The voice lines map characters speak during some animations (exercise...). The game
@@ -265,16 +514,40 @@ namespace SVS_FreeRoam
         /// </summary>
         private static void Voice(SV.Chara.AI playerAI)
         {
-            if (_voiceFailed || _playing < 0 || !Plugin.AnimationProps.Value) return;
+            // The game says it played the line and nothing is heard: a second after each
+            // one, with Debug Info on, list what the game is really playing and how loud.
+            if (_audioListAt < 0f || Time.unscaledTime < _audioListAt) return;
+            _audioListAt = -1f;
+            if (!Notice.On) return;
             try
             {
-                if (!PlayingOurs(playerAI)) return;
-                SingletonInitializerAsync<LowpolyActionVoiceManager>.Instance?.LowpolyVoiceProc(playerAI);
+                var cam = Camera.main;
+                var sb = new StringBuilder("Idle voice: what is playing a second later:");
+                int shown = 0;
+                foreach (var source in UnityEngine.Object.FindObjectsOfType<AudioSource>())
+                {
+                    if (source == null || !source.isPlaying) continue;
+                    if (++shown > 25) break;
+                    var t = source.transform;
+                    sb.Append("\n  ").Append(t.parent != null ? t.parent.name + "/" : "").Append(t.name)
+                      .Append(" clip '").Append(source.clip != null ? source.clip.name : "none")
+                      .Append("' volume ").Append(source.volume.ToString("0.00"))
+                      .Append(" mute ").Append(source.mute)
+                      .Append(" 3D ").Append(source.spatialBlend.ToString("0.0"))
+                      .Append(" max ").Append(source.maxDistance.ToString("0"))
+                      .Append(" from camera ").Append(cam != null ? Vector3.Distance(t.position, cam.transform.position).ToString("0.0") : "?")
+                      .Append(" group ").Append(source.outputAudioMixerGroup != null ? source.outputAudioMixerGroup.name : "none");
+                }
+                var player = playerAI.transform;
+                sb.Append("\n  player has ").Append(player.GetComponentsInChildren<AudioSource>(true).Length)
+                  .Append(" audio sources under it; listener on '");
+                var listener = UnityEngine.Object.FindObjectOfType<AudioListener>();
+                sb.Append(listener != null ? listener.name : "none").Append("'.");
+                Notice.Log(sb.ToString());
             }
             catch (Exception e)
             {
-                _voiceFailed = true;
-                Plugin.Logger.LogWarning("Animation voices are off: the game's voice call failed (" + e.Message + ").");
+                Notice.Log("Idle voice: could not list the audio (" + e.Message + ").");
             }
         }
 
@@ -296,29 +569,14 @@ namespace SVS_FreeRoam
                 return;
             }
 
-            var ids = Fitting(playerAI);
-            switch (Plugin.TapPlays.Value)
-            {
-                case IdleTap.RandomFavorite:
-                    var favorites = Favorites();
-                    if (favorites.Count == 0)
-                    {
-                        Notice.Tell("No favorite animations yet: hold the button for the wheel and " +
-                                    $"press {Plugin.FavoriteKey.Value} on an animation.", 6f);
-                        break;
-                    }
-                    // Seated: the favorites this seat offers. Standing: those that need no
-                    // seat, or the character would sit on air.
-                    bool seated = CurrentSeat(playerAI) != null;
-                    var usable = favorites.FindAll(id => seated ? ids.Contains(id) : !NeedsSeat(id));
-                    if (usable.Count > 0) ids = usable;
-                    break;
-
-                case IdleTap.ChosenAnimation:
-                    foreach (int id in AllAnimations())
-                        if (Name(id) == Plugin.TapAnimation.Value) { Play(playerAI, id); return; }
-                    break;
-            }
+            // A random one of the chosen set. Seated: of those this seat offers. Standing in
+            // the open: of those that need no seat, or the character would sit on air (the
+            // wheel still lists them all). If that leaves nothing, the set as it is.
+            var ids = SetAnimations(playerAI);
+            var fitting = Fitting(playerAI);
+            bool seated = CurrentSeat(playerAI) != null;
+            var usable = ids.FindAll(id => seated ? fitting.Contains(id) : !NeedsSeat(id));
+            if (usable.Count > 0) ids = usable;
 
             // Not the plain waiting poses: those are what the character does anyway.
             int resting = Resting(playerAI);
@@ -329,18 +587,13 @@ namespace SVS_FreeRoam
 
         // ------------------------------------------------------------------ wheels
 
-        /// <summary>What the held wheel lists: what fits here, the favorites, and with
-        /// Extended Animations everything else.</summary>
+        /// <summary>What the held wheel lists: the chosen set, its favorites first.</summary>
         private static List<int> WheelAnimations(SV.Chara.AI playerAI)
         {
+            var set = SetAnimations(playerAI);
             var ids = new List<int>();
-            var fitting = Fitting(playerAI);
-            // Seated, the seat's own come first; standing, the favorites do.
-            if (CurrentSeat(playerAI) != null) ids.AddRange(fitting);
-            foreach (int id in Favorites()) if (!ids.Contains(id)) ids.Add(id);
-            foreach (int id in fitting) if (!ids.Contains(id)) ids.Add(id);
-            if (Plugin.ExtendedAnimations.Value)
-                foreach (int id in AllAnimations()) if (!ids.Contains(id)) ids.Add(id);
+            foreach (int id in Favorites()) if (set.Contains(id)) ids.Add(id);
+            foreach (int id in set) if (!ids.Contains(id)) ids.Add(id);
             return ids;
         }
 
@@ -560,7 +813,7 @@ namespace SVS_FreeRoam
                 for (int i = 0; i < points.Count; i++)
                 {
                     var point = points[i];
-                    if (point == null || IsStanding(point)) continue;
+                    if (point == null || !IsSeat(point, pair.Key)) continue;
 
                     var to = SeatPosition(point) + Vector3.up * SpotHeight - ray.origin;
                     if (Vector3.Dot(to, ray.direction) <= 0f) continue;
@@ -582,6 +835,7 @@ namespace SVS_FreeRoam
         internal static MovePointInfo NearbySpot(SV.Chara.AI playerAI, out int job)
         {
             job = -1;
+            _nearbyTable = 0;
             MovePointInfo spot = null;
             if (!Plugin.ThirdPersonSpots.Value) return null;
             var table = Spots(playerAI, out _);
@@ -596,7 +850,7 @@ namespace SVS_FreeRoam
                 for (int i = 0; i < points.Count; i++)
                 {
                     var point = points[i];
-                    if (point == null || IsStanding(point)) continue;
+                    if (point == null || !IsSeat(point, pair.Key)) continue;
                     float distance = Mathf.Min(Vector3.Distance(point.transform.position, feet),
                                                Vector3.Distance(SeatPosition(point), feet));
                     if (distance < best || (distance == best && pair.Key == -1))
@@ -607,7 +861,64 @@ namespace SVS_FreeRoam
                     }
                 }
             }
+            if (spot != null) return spot;
+
+            // No wander seat here: the seats of the map's activities (the classroom's desks for
+            // Study, the cafe's tables for a meal), which the game only uses during them.
+            for (int t = 1; t <= 4; t++)
+            {
+                var activity = Table(t);
+                if (activity == null) continue;
+                foreach (var pair in activity)
+                {
+                    var points = pair.Value?.points;
+                    if (points == null) continue;
+                    for (int i = 0; i < points.Count; i++)
+                    {
+                        var point = points[i];
+                        if (point == null) continue;
+                        var detail = Detail(point, t, pair.Key);
+                        if (detail == null || !SeatDetail(detail)) continue;
+                        var seatAt = detail.charactorOffset != null ? detail.charactorOffset.position
+                                                                    : point.transform.position;
+                        float distance = Mathf.Min(Vector3.Distance(point.transform.position, feet),
+                                                   Vector3.Distance(seatAt, feet));
+                        if (distance >= best) continue;
+                        best = distance;
+                        spot = point;
+                        job = pair.Key;
+                        _nearbyTable = t;
+                    }
+                }
+            }
             return spot;
+        }
+
+        /// <summary>
+        /// Sits the player on an activity's seat by hand: onto the seat's own spot, facing its
+        /// way, in the first animation the activity lists there.
+        /// </summary>
+        private static void UseBorrowed(SV.Chara.AI playerAI, MovePointInfo spot, int table, int job)
+        {
+            var detail = Detail(spot, table, job);
+            if (detail == null) return;
+            var ids = new List<int>();
+            for (int i = 0; i < detail.animations.Count; i++)
+                if (!ids.Contains(detail.animations[i].animMotion)) ids.Add(detail.animations[i].animMotion);
+
+            Follower.Stop("using a spot", playerAI);
+            playerAI.BehaviourCtrl.Stop(true);
+            var where = detail.charactorOffset != null ? detail.charactorOffset : spot.transform;
+            Notice.Log($"Idle: borrowing '{spot.name}' from the {TableNames[table]} table, activity " +
+                       $"{(MovePointInfo.JobKind)job}: point at {spot.transform.position}, seat at {where.position}" +
+                       $"{(detail.charactorOffset != null ? "" : " (no offset)")}, prop '{detail.moveObjectName}'.");
+
+            playerAI.position = spot.transform.position;
+            playerAI.transform.SetPositionAndRotation(where.position, where.rotation);
+            _borrowed = spot;
+            _borrowedAt = where.position;
+            _borrowedIds = ids;
+            Play(playerAI, ids[0]);
         }
 
         /// <summary>
@@ -618,7 +929,13 @@ namespace SVS_FreeRoam
         /// </summary>
         private static void UseSpot(SV.Chara.AI playerAI, MovePointInfo spot, int job)
         {
+            if (_nearbyTable != 0)
+            {
+                UseBorrowed(playerAI, spot, _nearbyTable, job);
+                return;
+            }
             Follower.Stop("using a spot", playerAI);
+            NoteSpot(spot, job);
             Notice.Log($"Idle: using {Describe(spot)}, job {job}.");
             playerAI.BehaviourCtrl.Stop(true);
             playerAI.position = spot.transform.position;
@@ -683,6 +1000,7 @@ namespace SVS_FreeRoam
             var seat = CurrentSeat(playerAI);
             if (seat != null)
             {
+                _borrowed = null;
                 // Leave the way a click-walk does: a walk to the floor in front of the seat.
                 if (Walker.Snap(seat.transform.position, 3f, out var floor, out _))
                 {
@@ -744,6 +1062,32 @@ namespace SVS_FreeRoam
                 sb.Append("\n  ").Append(kind.Key).Append(" (").Append(kind.Value.Count).Append(" spots):");
                 foreach (int id in kind.Value.Ids) sb.Append(' ').Append(id).Append('=').Append(Name(id)).Append(',');
             }
+            for (int t = 1; t <= 4; t++)
+            {
+                var activity = Table(t);
+                if (activity == null) continue;
+                foreach (var pair in activity)
+                {
+                    var points = pair.Value?.points;
+                    if (points == null) continue;
+                    int seats = 0;
+                    var ids = new List<int>();
+                    for (int i = 0; i < points.Count; i++)
+                    {
+                        var point = points[i];
+                        if (point == null) continue;
+                        var detail = Detail(point, t, pair.Key);
+                        if (detail == null || !SeatDetail(detail)) continue;
+                        seats++;
+                        for (int k = 0; k < detail.animations.Count; k++)
+                            if (!ids.Contains(detail.animations[k].animMotion)) ids.Add(detail.animations[k].animMotion);
+                    }
+                    sb.Append("\n  ").Append(TableNames[t]).Append(" table, activity ")
+                      .Append((MovePointInfo.JobKind)pair.Key).Append(": ").Append(points.Count)
+                      .Append(" points, ").Append(seats).Append(" seats:");
+                    foreach (int id in ids) sb.Append(' ').Append(id).Append('=').Append(Name(id)).Append(',');
+                }
+            }
             Notice.Log(sb.ToString());
         }
 
@@ -755,9 +1099,21 @@ namespace SVS_FreeRoam
             if (poses != null)
                 for (int i = 0; i < poses.Count; i++) sb.Append(i > 0 ? "," : "").Append(poses[i]);
             sb.Append(']');
-            var ids = new List<int>();
-            AddAnimations(point, ids);
-            foreach (int id in ids) sb.Append(' ').Append(id).Append('=').Append(Name(id));
+            var details = point.urouroDetails;
+            if (details != null)
+                for (int i = 0; i < details.Count; i++)
+                {
+                    var detail = details[i];
+                    if (detail == null) continue;
+                    sb.Append(" {").Append(detail.job).Append(':');
+                    var animations = detail.animations;
+                    if (animations != null)
+                        for (int k = 0; k < animations.Count; k++)
+                            sb.Append(' ').Append(Name(animations[k].animMotion)).Append('x').Append(animations[k].weight);
+                    if (detail.charactorOffset != null) sb.Append(", offset");
+                    if (!string.IsNullOrEmpty(detail.moveObjectName)) sb.Append(", prop ").Append(detail.moveObjectName);
+                    sb.Append('}');
+                }
             return sb.ToString();
         }
     }

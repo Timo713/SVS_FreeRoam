@@ -193,15 +193,14 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<bool> ThirdPersonSpots;
         internal static ConfigEntry<bool> ShowSpotMarker;
         internal static ConfigEntry<int> WheelSlots;
-        internal static ConfigEntry<IdleTap> TapPlays;
-        internal static ConfigEntry<string> TapAnimation;
+        internal static ConfigEntry<AnimationSet> WheelSet;
         internal static ConfigEntry<KeyCode> FavoriteKey;
-        internal static ConfigEntry<string> FavoriteAnimations;
+        internal static ConfigEntry<string> Favorites1;
+        internal static ConfigEntry<string> Favorites2;
+        internal static ConfigEntry<string> Favorites3;
         internal static ConfigEntry<bool> AnimationProps;
         internal static ConfigEntry<float> PovBlurStrength;
-        internal static ConfigEntry<float> PovFocusSpeed;
         internal static ConfigEntry<PovDepthOfField> PovDepthOfFieldMode;
-        internal static ConfigEntry<bool> ExtendedAnimations;
         internal static ConfigEntry<bool> CharacterWheel;
         internal static ConfigEntry<KeyCode> IdleKeyThirdPerson;
         internal static ConfigEntry<KeyCode> IdleKeyThirdPerson2;
@@ -342,6 +341,7 @@ namespace SVS_FreeRoam
                     {
                         Order = 100,
                         HideDefaultButton = true,
+                        HideSettingName = true,
                         CustomDrawer = PairDrawer.ResetAll(Config),
                     }));
 
@@ -398,12 +398,6 @@ namespace SVS_FreeRoam
                 Ordered("How strongly the background is blurred in third person, compared with the " +
                         "map's own setting. 1 matches it; 0 is no blur.",
                         new AcceptableValueRange<float>(0f, 5f), 3));
-
-            PovFocusSpeed = Config.Bind(
-                "Camera", "Third Person Focus Speed", 4f,
-                Ordered("How quickly the focus moves when it changes between your character, " +
-                        "someone you aim at and nothing. Lower is a slower, softer change.",
-                        new AcceptableValueRange<float>(0.5f, 20f), 2));
 
             ClickWalk = Config.Bind(
                 "Click To Walk", "Click To Walk", true,
@@ -507,11 +501,15 @@ namespace SVS_FreeRoam
                 "Click To Idle", "Idle Key In Third Person (second)", KeyCode.None,
                 Ordered("An optional second key.", 87));
 
-            ExtendedAnimations = Config.Bind(
-                "Click To Idle", "Extended Animations", false,
-                Ordered("The wheel also lists every other animation in the game, on extra pages " +
-                        "(turn them with the mouse wheel). Many only look right at a chair, a desk " +
-                        "or with the props of an activity.", 85));
+            WheelSet = Config.Bind(
+                "Click To Idle", "Animation Set", AnimationSet.Fitting,
+                Ordered("Which animations the wheel lists, and a tap picks one of at random.\n\n" +
+                        "Fitting - what suits where you are: standing ones in the open, the seat's " +
+                        "own when seated.\nMap Animations - everything this map's spots offer.\n" +
+                        "Sitting - every chair and desk animation in the game.\nFavorites 1 to 3 - " +
+                        "your own collections; put one animation in a collection to make a tap " +
+                        "always play it.\nAll - every animation in the game. Many only look right " +
+                        "at a chair, a desk or with the props of an activity.", 85));
 
             CharacterWheel = Config.Bind(
                 "Click To Idle", "Character Wheel", true,
@@ -534,33 +532,32 @@ namespace SVS_FreeRoam
                         "when you let go: click a choice, or the centre to cancel.",
                         new AcceptableValueRange<int>(4, 16), 78));
 
-            TapPlays = Config.Bind(
-                "Click To Idle", "Tap Plays", IdleTap.RandomAnimation,
-                Ordered("What a tap of the idle button or key plays: a random animation, a random " +
-                        "one of your favorites, or the one animation chosen below.", 77));
-
-            TapAnimation = Config.Bind(
-                "Click To Idle", "Tap Animation", "Waiting Action 0",
-                Ordered("The animation a tap plays when Tap Plays is set to Chosen Animation.",
-                        new AcceptableValueList<string>(
-                            ClickIdler.AllAnimations().ConvertAll(ClickIdler.Name).ToArray()), 76));
-
             FavoriteKey = Config.Bind(
                 "Click To Idle", "Favorite Key", KeyCode.F,
-                Ordered("With the wheel open, press this on an animation to add it to your " +
-                        "favorites or take it off. Favorites are starred and listed first.", 75));
+                Ordered("With the wheel open, press this on an animation to add it to a favorite " +
+                        "collection or take it off: the collection chosen as Animation Set, else " +
+                        "Favorites 1. Favorites are starred and listed first.", 75));
             CarryOver(FavoriteKey, "Click To Idle", "Favo" + "urite Key");
 
-            FavoriteAnimations = Config.Bind(
-                "Click To Idle", "Favorite Animations", "",
-                Ordered("Your favorites, by name, separated by commas. Easier to change from the " +
-                        "wheel with the Favorite Key.", 74));
-            CarryOver(FavoriteAnimations, "Click To Idle", "Favo" + "urite Animations");
+            Favorites1 = Config.Bind(
+                "Click To Idle", "Favorites 1", "",
+                Ordered("A collection of favorite animations, by name, separated by commas. Easier " +
+                        "to change from the wheel with the Favorite Key.", 74));
+            CarryOver(Favorites1, "Click To Idle", "Favorite Animations");
+            CarryOver(Favorites1, "Click To Idle", "Favo" + "urite Animations");
+
+            Favorites2 = Config.Bind(
+                "Click To Idle", "Favorites 2", "",
+                Ordered("A second collection.", 73));
+
+            Favorites3 = Config.Bind(
+                "Click To Idle", "Favorites 3", "",
+                Ordered("A third collection.", 72));
 
             AnimationProps = Config.Bind(
                 "Click To Idle", "Animation Props And Effects", true,
                 Ordered("Animations are started the way the game starts them for other characters, " +
-                        "with whatever they hold (a phone, a book). Off, only the movement plays.", 73));
+                        "with whatever they hold (a phone, a book). Off, only the movement plays.", 71));
 
             CarryOverFromWalkAnywhere();
 
@@ -648,7 +645,8 @@ namespace SVS_FreeRoam
 
             SprintKey2 = BindSecond("Sprint Key 2");
             SprintKey = Config.Bind("Hotkeys", "Sprint Key", KeyCode.LeftShift,
-                Paired("Hold to sprint.",
+                Paired("Hold to sprint. Double-tapping a direction (WASD, the arrow keys or the " +
+                       "mouse button that walks you forward) and holding it sprints too.",
                        null, 69));
 
             // The controller's buttons sit together at the bottom of the list. Joystick Button
@@ -731,7 +729,8 @@ namespace SVS_FreeRoam
 
             RunningKey2 = BindSecond("Walk/Run Key 2");
             RunningKey = Config.Bind("Hotkeys", "Walk/Run Key", KeyCode.LeftControl,
-                Paired("Hold to walk instead of run.",
+                Paired("Hold to walk instead of run. Double-tap it to switch between walking and " +
+                       "running for good.",
                        null, 70));
 
             HideCharacterKey2 = BindSecond("Hide Character Key 2");
@@ -780,7 +779,8 @@ namespace SVS_FreeRoam
                 new ConfigDescription(
                     "Which mouse button walks you forward in third person.\n\nOff - keyboard " +
                     "only.\nLeftClickForward - hold the left button.\nRightClickForward - hold the " +
-                    "right button.", null,
+                    "right button.\n\nDouble-tap the button, or a direction key, and hold it to " +
+                    "sprint. Double-tap the Walk/Run key to switch between walking and running.", null,
                     new ConfigurationManagerAttributes { Order = 100 }));
 
 

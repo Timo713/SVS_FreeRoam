@@ -30,6 +30,7 @@ namespace SVS_FreeRoam
         private static int _map = int.MinValue;
         private static bool _failed;
         private static bool _active;
+        private const float FocusSpeed = 4f;           // how fast the focus glides; higher is quicker
         private static float _distance = 3f;           // where the focus is now
         private static float _blur;                    // how much of the blur is showing, 0 to 1
 
@@ -69,7 +70,7 @@ namespace SVS_FreeRoam
                 // Eased, so a change of what is in focus (the player, someone aimed at, nothing)
                 // glides instead of snapping: the distance moves, and the blur fades in and out.
                 bool wanted = mode != PovDepthOfField.Off && focus >= 0f;
-                float ease = 1f - Mathf.Exp(-Plugin.PovFocusSpeed.Value * Time.unscaledDeltaTime);
+                float ease = 1f - Mathf.Exp(-FocusSpeed * Time.unscaledDeltaTime);
                 if (wanted)
                     _distance = _blur < 0.01f ? Mathf.Max(0.5f, focus)      // nothing to glide from
                                               : Mathf.Lerp(_distance, Mathf.Max(0.5f, focus), ease);

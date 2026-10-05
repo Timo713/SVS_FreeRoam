@@ -45,6 +45,7 @@ namespace SVS_FreeRoam
             {
                 Follower.Stop("walk click");
                 Notice.Log($"Walk: to spot {ClickIdler.Describe(spot)}, job {job}.");
+                ClickIdler.NoteSpot(spot, job);
                 Walker.WalkToPoint(playerAI, spot, playerAI.BehaviourCtrl.NowMapID, job);
                 return;
             }

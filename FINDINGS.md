@@ -2157,3 +2157,57 @@ for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is
   "Reset All Settings" is a custom drawer button under Enable (two clicks).
 - Depth of field: the focus distance and the blur's weight are eased
   (`1 - exp(-speed * dt)`), "Third Person Focus Speed"; the offset setting is gone.
+
+**Round 6 result (developer, 2026-10-04), and round 7 (UNVERIFIED).**
+- **Voices still silent.** Calling `LowpolyVoiceProc(playerAI)` every frame did not
+  throw and did not speak. TRIED, FAILED as the whole answer. Round 7 calls
+  `LowpolyVoicePlay(key, playerAI)` once when an animation starts, with the `infoTable`
+  entry whose key or `hash` equals `AnimationCtrlManager.GetHash(id)` (or the id), and
+  with Debug Info logs "Idle voice: ..." (hash, match, result) plus, once, the whole
+  table and every animation's hash. If there is no match the table is keyed some other
+  way and that dump says how. `AnimStateInfo`: `hash`, `name`, `IsLoop`, `IsNoMale`,
+  `bundleInfos`.
+- **Seats missing in the classroom and at the cafe's tables** were not the reach: those
+  seats are not wander (urouro) points. They belong to activities (Study, a meal with
+  someone), in the solo / with / everyone / pc tables, each point's `soloDetails` /
+  `withDetails` / `everyoneDetails` / `pcDetails`. Reach is 1 m again. When no wander
+  seat is in reach, `NearbySpot` now looks through those tables and `UseBorrowed` seats
+  the player by hand: `playerAI.transform` to the detail's `charactorOffset` (position
+  and rotation), first listed animation. Getting up is the usual walk to the floor.
+  Open questions: whether the game's idle tree leaves the player there (a log line
+  says so if not), and props (`moveObjectName`, a chair pulled out) are not moved.
+  Only the third-person idle key reaches these; click-to-walk still uses wander seats.
+- The reference list ("Idle: animations on map") now ends with the activity tables'
+  seats per activity.
+- Debug Info was off in the round 6 test (Reset All Settings switches it off too).
+
+**Round 7 result (developer, 2026-10-04), and round 8 (UNVERIFIED).**
+- **A point's `poses` does not say whether it is a seat.** From the per-map lists: the
+  classroom (map 4) has 24 points with pose Stand listed in the urouro table under key 1
+  (Study) offering Study Desk0/1; the cafe (map 1) has pose-Stand points whose
+  activity-None offer includes Desk Wait and Smart Phone Desk, and Job offers Job
+  Waitress 0/1; the beach (map 3) has Stand+Ground points whose offer lists only standing
+  animations. The activity tables' points are pose Stand too ("0 seats" everywhere), so
+  round 7's borrowed seats never triggered. A seat is now a point that is non-standing
+  **or** whose offer for the activity it is listed under contains a sitting animation
+  (`ClickIdler.IsSeat`), and it is used with that activity as the job
+  (`SetCharaMapMove`, type 0, job = the table key). UNVERIFIED that the game then seats
+  the player as it seats NPCs; `Describe` now logs a point detail by detail (activity,
+  animations x weight, offset, prop) to settle the cafe's mixed offers.
+- **Voices: the table is keyed by a running number; `AnimStateInfo.hash` is the
+  animation's state hash** (= `AnimationCtrlManager.GetHash(id)`), 45 entries, all
+  `IsNoMale`. CONFIRMED from the dump: dumbbell 20 -> key 3 'f_training_00', exercise
+  17-19 -> keys 0-2, study 36/37 -> 18/19, and so on. `LowpolyVoicePlay(key, playerAI)`
+  **returns true and nothing is heard**. (Round 7 also matched Stand to key 0 by
+  mistake, through an id comparison; removed.) Round 8 lists, a second after each line,
+  every playing AudioSource (clip, volume, 3D, distance, mixer group) to see whether
+  the clip plays at all. The per-frame `LowpolyVoiceProc` call is gone.
+- Sitting animations (`NeedsSeat`: the game's `posePtnChairIDs` / `posePtnDeskIDs`, names
+  with chair or desk, and 14 / 16): Chair Wait 9, Desk Wait 10, Waiting Action 1 and 3,
+  Meal Chair 22, Meal Desk 23, Work Chair 25, Smart Phone Chair 27 / Desk 28, Bookread
+  Chair 30, Erotic Book Chair 32, Game Chair 35, Study Desk0/1 36-37, Masturbation
+  Chair 40 / Desk 41, Meal2 Chair 54 / Desk 55.
+- Settings: "Animation Set" (Fitting, Map Animations, Sitting, Favorites 1-3, All)
+  replaces Extended Animations, Tap Plays and Tap Animation; a tap plays a random one
+  of the set. Three favorite collections. `HideSettingName` added to our
+  ConfigurationManagerAttributes copy for the full-row Reset button.
