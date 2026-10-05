@@ -381,7 +381,10 @@ namespace SVS_FreeRoam
         /// </summary>
         private static bool IsCrouching()
         {
-            bool pad = Plugin.GamepadSupport.Value;
+            // The controller's crouch shares B with Back: not while a button on screen is
+            // selected (B backs out of that), nor while the animation wheel is up.
+            bool pad = Plugin.GamepadSupport.Value && !GamepadUI.Active && !GamepadUI.UsedBThisFrame &&
+                       !ClickIdler.BlocksInput;
             bool held = Keys.Held(Plugin.CrouchKey, Plugin.CrouchKey2) ||
                         (pad && Keys.Held(Plugin.GamepadCrouchKey, Plugin.GamepadCrouchKey2));
 

@@ -203,8 +203,11 @@ namespace SVS_FreeRoam
             return _ => Guarded(() =>
             {
                 bool armed = Time.unscaledTime < _resetArmedUntil;
-                if (!GUILayout.Button(armed ? "Click again to reset every setting" : "Reset All Settings",
-                                      GUILayout.ExpandWidth(true))) return;
+                bool clicked = GUILayout.Button(armed ? "Click again to confirm" : "Reset All Settings",
+                                                GUILayout.ExpandWidth(true));
+                // As wide as the other rows' fields: they end where their Reset button begins.
+                GUILayout.Space(ResetWidth + 4f);
+                if (!clicked) return;
                 if (!armed)
                 {
                     _resetArmedUntil = Time.unscaledTime + 4f;

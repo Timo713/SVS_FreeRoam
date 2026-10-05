@@ -34,6 +34,8 @@ namespace SVS_FreeRoam
         private static readonly Text[] _labels = new Text[MaxSlots];
 
         private static List<string> _items;
+        private static List<Color> _highlights;        // per choice; clear for the usual colour
+        private static bool _pad;
         private static Vector2 _centrePos;
         private static Vector2 _pointer;
         private static bool _virtual;
@@ -63,13 +65,18 @@ namespace SVS_FreeRoam
 
         private static float Scale => Screen.height / 1080f;
 
-        internal static void Open(List<string> items, Vector2 centre, bool virtualPointer)
+        /// <param name="highlights">The colour each choice's text takes while pointed at; a
+        /// clear colour, or no list, for the usual one.</param>
+        internal static void Open(List<string> items, Vector2 centre, bool virtualPointer,
+                                  List<Color> highlights = null)
         {
             if (items == null || items.Count == 0) return;
             _slots = Mathf.Clamp(Plugin.WheelSlots.Value, 2, MaxSlots);
             Ensure();
 
             _items = items;
+            _highlights = highlights;
+            _pad = false;
             _virtual = virtualPointer;
             _sticky = false;
             _pointer = Vector2.zero;
@@ -89,25 +96,33 @@ namespace SVS_FreeRoam
         }
 
         /// <summary>Changes the text of one choice while the wheel is open.</summary>
-        internal static void SetLabel(int index, string text)
+        internal static void SetLabel(int index, string text, Color highlight)
         {
             if (_items == null || index < 0 || index >= _items.Count) return;
             _items[index] = text;
+            if (_highlights != null && index < _highlights.Count) _highlights[index] = highlight;
             if (IsOpen && _root != null) Refresh();
         }
 
+        /// <summary>Steered with a controller: the texts in the middle say so.</summary>
+        internal static bool PadMode
+        {
+            get => _pad;
+            set { _pad = value; if (IsOpen && _root != null) Refresh(); }
+        }
+
+        private static Color HighlightOf(int index) =>
+            _highlights != null && index < _highlights.Count && _highlights[index].a > 0f
+                ? _highlights[index] : new Color(1f, 0.92f, 0.45f);
+
+        /// <summary>Steered with the mouse: its position, or its movement in third person.</summary>
         internal static void Tick()
         {
             if (!IsOpen) return;
             if (_root == null) { IsOpen = false; return; }
 
             float scroll = Input.GetAxis("Mouse ScrollWheel");
-            if (scroll != 0f && Pages > 1)
-            {
-                _page = (_page + (scroll < 0f ? 1 : Pages - 1)) % Pages;
-                _slot = -1;
-                Refresh();
-            }
+            if (scroll != 0f) TurnPage(scroll < 0f ? 1 : -1);
 
             float scale = Scale;
             Vector2 offset;
@@ -121,9 +136,33 @@ namespace SVS_FreeRoam
             {
                 offset = (Vector2)Input.mousePosition - _centrePos;
             }
+            PointAt(offset);
+        }
 
+        /// <summary>Steered with a controller: a stick's tilt points at a choice.</summary>
+        /// <param name="pageStep">1 for the next page, -1 for the previous, 0 to stay.</param>
+        internal static void TickPad(Vector2 stick, int pageStep)
+        {
+            if (!IsOpen) return;
+            if (_root == null) { IsOpen = false; return; }
+
+            if (pageStep != 0) TurnPage(pageStep);
+            PointAt(stick.magnitude > 0.5f ? stick.normalized * DiscRadius * Scale * 0.7f : Vector2.zero);
+        }
+
+        private static void TurnPage(int step)
+        {
+            if (Pages <= 1) return;
+            _page = (_page + (step > 0 ? 1 : Pages - 1)) % Pages;
+            _slot = -1;
+            Refresh();
+        }
+
+        /// <param name="offset">From the wheel's centre, in screen pixels.</param>
+        private static void PointAt(Vector2 offset)
+        {
             int slot = -1, count = OnPage;
-            if (count > 0 && offset.magnitude > DiscRadius * Hole * scale)
+            if (count > 0 && offset.magnitude > DiscRadius * Hole * Scale)
             {
                 // Clockwise from straight up, as the choices are laid out.
                 float angle = Mathf.Atan2(offset.x, offset.y);
@@ -166,7 +205,7 @@ namespace SVS_FreeRoam
                 rt.sizeDelta = new Vector2(width, 60f);
                 _labels[i].fontSize = size;
                 _labels[i].text = _items[_page * _slots + i];
-                _labels[i].color = i == _slot ? new Color(1f, 0.92f, 0.45f) : Color.white;
+                _labels[i].color = i == _slot ? HighlightOf(_page * _slots + i) : Color.white;
             }
 
             bool lit = _slot >= 0 && count > 0;
@@ -181,9 +220,11 @@ namespace SVS_FreeRoam
             }
 
             string text = lit ? _items[_page * _slots + _slot]
-                        : _sticky ? "Click here to cancel" : "Release to cancel";
-            if (_sticky && lit) text += "\n<size=15>click to choose</size>";
-            if (Pages > 1) text += $"\n<size=15>page {_page + 1} of {Pages}  -  scroll</size>";
+                        : _pad ? "Tilt a stick" : _sticky ? "Click here to cancel" : "Release to cancel";
+            if (_pad && lit) text += "\n<size=15>A plays it</size>";
+            else if (_sticky && lit) text += "\n<size=15>click to choose</size>";
+            if (Pages > 1)
+                text += $"\n<size=15>page {_page + 1} of {Pages}  -  {(_pad ? "RB or D-pad" : "scroll")}</size>";
             _centre.text = text;
         }
 

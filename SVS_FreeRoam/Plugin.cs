@@ -194,7 +194,6 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<bool> ShowSpotMarker;
         internal static ConfigEntry<int> WheelSlots;
         internal static ConfigEntry<AnimationSet> WheelSet;
-        internal static ConfigEntry<KeyCode> FavoriteKey;
         internal static ConfigEntry<string> Favorites1;
         internal static ConfigEntry<string> Favorites2;
         internal static ConfigEntry<string> Favorites3;
@@ -251,6 +250,8 @@ namespace SVS_FreeRoam
         // ---- gamepad ---------------------------------------------------------
         internal static ConfigEntry<KeyCode> GamepadInteractKey;
         internal static ConfigEntry<KeyCode> GamepadInteractKey2;
+        internal static ConfigEntry<KeyCode> GamepadIdleKey;
+        internal static ConfigEntry<KeyCode> GamepadIdleKey2;
         internal static ConfigEntry<KeyCode> GamepadToggleKey;
         internal static ConfigEntry<KeyCode> GamepadToggleKey2;
         internal static ConfigEntry<KeyCode> GamepadSprintKey;
@@ -341,7 +342,6 @@ namespace SVS_FreeRoam
                     {
                         Order = 100,
                         HideDefaultButton = true,
-                        HideSettingName = true,
                         CustomDrawer = PairDrawer.ResetAll(Config),
                     }));
 
@@ -526,39 +526,34 @@ namespace SVS_FreeRoam
                 Ordered("In third person, show a marker on the seat or spot the idle key would use.", 79));
 
             WheelSlots = Config.Bind(
-                "Click To Idle", "Wheel Size", 8,
+                "Click To Idle", "Wheel Size", 12,
                 Ordered("How many choices the wheel shows at once. The rest go on further pages, " +
                         "turned with the mouse wheel. In third person a wheel with pages stays open " +
                         "when you let go: click a choice, or the centre to cancel.",
                         new AcceptableValueRange<int>(4, 16), 78));
 
-            FavoriteKey = Config.Bind(
-                "Click To Idle", "Favorite Key", KeyCode.F,
-                Ordered("With the wheel open, press this on an animation to add it to Favorites 1 " +
-                        "or take it off. The number keys 1, 2 and 3 do the same for that " +
-                        "collection. Favorites are starred with their collection's number and " +
-                        "listed first.", 75));
-            CarryOver(FavoriteKey, "Click To Idle", "Favo" + "urite Key");
-
             Favorites1 = Config.Bind(
                 "Click To Idle", "Favorites 1", "",
-                Ordered("A collection of favorite animations, by name, separated by commas. Easier " +
-                        "to change from the wheel with the Favorite Key.", 74));
+                Ordered("A collection of favorite animations. With the wheel open, press 1 on an " +
+                        "animation to add it or take it out. Favorites are starred with their " +
+                        "collection's number and listed first. (Kept here by name, separated by " +
+                        "commas.)", 74));
             CarryOver(Favorites1, "Click To Idle", "Favorite Animations");
             CarryOver(Favorites1, "Click To Idle", "Favo" + "urite Animations");
 
             Favorites2 = Config.Bind(
                 "Click To Idle", "Favorites 2", "",
-                Ordered("A second collection.", 73));
+                Ordered("A second collection: press 2 on an animation in the wheel.", 73));
 
             Favorites3 = Config.Bind(
                 "Click To Idle", "Favorites 3", "",
-                Ordered("A third collection.", 72));
+                Ordered("A third collection: press 3 on an animation in the wheel.", 72));
 
             AnimationProps = Config.Bind(
                 "Click To Idle", "Animation Props And Effects", true,
                 Ordered("Animations are started the way the game starts them for other characters, " +
-                        "with whatever they hold (a phone, a book). Off, only the movement plays.", 71));
+                        "with whatever they hold (a phone, a book) and the sounds some of them " +
+                        "make (the exercise ones). Off, only the movement plays.", 71));
 
             CarryOverFromWalkAnywhere();
 
@@ -678,10 +673,18 @@ namespace SVS_FreeRoam
                 Paired("Y. Use the nearest doorway or activity spot.",
                        null, 27));
 
+            GamepadIdleKey2 = BindSecond("Gamepad Idle Button 2");
+            GamepadIdleKey = Config.Bind("Hotkeys", "Gamepad Idle Button",
+                KeyCode.JoystickButton4,
+                Paired("LB. Tap to sit on the seat next to you or play an idle animation; tap again " +
+                       "to get up or stop. Hold for the animation wheel: tilt a stick to an " +
+                       "animation and press Select (A) to play it; RB or the D-pad turns its pages.",
+                       null, 26));
+
             GamepadToggleKey2 = BindSecond("Gamepad PoV Toggle Button 2");
             GamepadToggleKey = Config.Bind("Hotkeys", "Gamepad PoV Toggle Button",
-                KeyCode.JoystickButton4,
-                Paired("LB. Switch third person on and off.",
+                KeyCode.JoystickButton8,
+                Paired("Left stick click. Switch third person on and off.",
                        null, 26));
 
             GamepadSprintKey2 = BindSecond("Gamepad Sprint Button 2");
@@ -702,8 +705,9 @@ namespace SVS_FreeRoam
 
             GamepadCrouchKey2 = BindSecond("Gamepad Crouch Button 2");
             GamepadCrouchKey = Config.Bind("Hotkeys", "Gamepad Crouch Button",
-                KeyCode.JoystickButton8,
-                Paired("Left stick click. Crouch, in first person.", null, 22));
+                KeyCode.JoystickButton1,
+                Paired("B. Crouch, in first person. Only while no button on screen is selected, " +
+                       "since B also backs out of those.", null, 22));
 
             GamepadResetViewKey2 = BindSecond("Gamepad Reset View Button 2");
             GamepadResetViewKey = Config.Bind("Hotkeys", "Gamepad Reset View Button",
@@ -743,6 +747,7 @@ namespace SVS_FreeRoam
             SetPairDrawer(InteractKey, InteractKey2);
             SetPairDrawer(GamepadInteractKey, GamepadInteractKey2);
             SetPairDrawer(GamepadToggleKey, GamepadToggleKey2);
+            SetPairDrawer(GamepadIdleKey, GamepadIdleKey2);
             SetPairDrawer(GamepadSprintKey, GamepadSprintKey2);
             SetPairDrawer(GamepadSelectKey, GamepadSelectKey2);
             SetPairDrawer(GamepadBackKey, GamepadBackKey2);
@@ -1167,20 +1172,34 @@ namespace SVS_FreeRoam
             var layout = Config.Bind("Hotkeys", "Gamepad Layout", 1,
                 new ConfigDescription("Which gamepad layout this file was last updated to.", null,
                     new ConfigurationManagerAttributes { Browsable = false }));
-            if (layout.Value >= 2) return;
+            if (layout.Value >= 3) return;
 
-            if (GamepadInteractKey.Value == KeyCode.JoystickButton0)
+            if (layout.Value < 2)
             {
-                GamepadInteractKey.Value = KeyCode.JoystickButton3;
-                Logger.LogInfo("Gamepad Interact Button moved from A to Y (the new layout: A selects).");
+                if (GamepadInteractKey.Value == KeyCode.JoystickButton0)
+                {
+                    GamepadInteractKey.Value = KeyCode.JoystickButton3;
+                    Logger.LogInfo("Gamepad Interact Button moved from A to Y (the new layout: A selects).");
+                }
+                if (GamepadToggleKey.Value == KeyCode.JoystickButton8)
+                    GamepadToggleKey.Value = KeyCode.JoystickButton4;
             }
-            if (GamepadToggleKey.Value == KeyCode.JoystickButton8)
+
+            // Layout 3: LB is the idle button (sit, idle animations, the wheel). The toggle goes
+            // back to the left stick click, and crouch from there to B.
+            if (GamepadToggleKey.Value == KeyCode.JoystickButton4)
             {
-                GamepadToggleKey.Value = KeyCode.JoystickButton4;
-                Logger.LogInfo("Gamepad PoV Toggle Button moved from the left stick click to LB " +
-                               "(the new layout: the left stick click crouches).");
+                GamepadToggleKey.Value = KeyCode.JoystickButton8;
+                Logger.LogInfo("Gamepad PoV Toggle Button moved from LB to the left stick click " +
+                               "(the new layout: LB sits and plays idle animations).");
             }
-            layout.Value = 2;
+            if (GamepadCrouchKey.Value == KeyCode.JoystickButton8)
+            {
+                GamepadCrouchKey.Value = KeyCode.JoystickButton1;
+                Logger.LogInfo("Gamepad Crouch Button moved from the left stick click to B " +
+                               "(the new layout: the left stick click switches third person).");
+            }
+            layout.Value = 3;
         }
 
         private ConfigEntry<KeyCode> BindSecond(string key)

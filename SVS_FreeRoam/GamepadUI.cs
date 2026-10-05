@@ -66,6 +66,8 @@ namespace SVS_FreeRoam
                     Exit();
                     return;
                 }
+                // The animation wheel has the controller: A plays from it, the D-pad turns its pages.
+                if (IdleWheel.IsOpen) return;
 
                 bool a = Keys.Down(Plugin.GamepadSelectKey, Plugin.GamepadSelectKey2);
                 bool b = Keys.Down(Plugin.GamepadBackKey, Plugin.GamepadBackKey2);

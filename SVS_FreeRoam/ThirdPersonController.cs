@@ -32,6 +32,9 @@ namespace SVS_FreeRoam
         internal static bool WheelCyclingActive { get; private set; }
 
         private static bool _handling;
+
+        /// <summary>The player is being moved by hand this frame, not by a walk of the game's.</summary>
+        internal static bool Handling => _handling;
         private static bool _running;
         private static int _lastMapId = int.MinValue;
 
@@ -103,7 +106,7 @@ namespace SVS_FreeRoam
                 if (playerAI != null) HandleMarkedOutsideThirdPerson(scene, playerAI);
 
                 // Gamepad A at a doorway or job spot, where third-person's interact can't reach.
-                if (playerAI != null && !Scene.IsOverlap && !IsAnyMenuOpen())
+                if (playerAI != null && !Scene.IsOverlap && !IsAnyMenuOpen() && !ClickIdler.BlocksInput)
                     GamepadTravel.Run(scene, mapManager, playerAI, mapId);
 
                 // WASD In All Views is the one setting that reaches past third-person.
@@ -1286,6 +1289,8 @@ namespace SVS_FreeRoam
         {
             float horizontal = Input.GetAxis("Horizontal");
             float vertical = Input.GetAxis("Vertical");
+            // The animation wheel, steered with the controller, has the sticks.
+            if (ClickIdler.PadWheelOpen) horizontal = vertical = 0f;
 
             // Hold a mouse button to walk forward, the way Koikatsu and Aicomi do. Before the
             // merge this had to be done by patching Input.GetAxis to lie about the Vertical

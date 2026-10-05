@@ -88,7 +88,11 @@ namespace SVS_FreeRoam
         {
             try
             {
-                if (__instance != null) Follower.FixedUpdate(__instance);
+                if (__instance != null)
+                {
+                    Follower.FixedUpdate(__instance);
+                    ClickIdler.FixedUpdate(__instance);
+                }
             }
             catch (Exception e)
             {

@@ -2236,3 +2236,81 @@ for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is
   local position back (it was only done with Overview Restore on).
 - Favorites: number keys 1-3 on the wheel toggle that collection; labels show the star
   with the collection numbers. Spot Click Size default 0.6.
+
+**Round 9 result (developer, 2026-10-04), and round 10 (UNVERIFIED).**
+- **Sound: setting the game's audio source to volume 1 did not make it audible**
+  (TRIED, FAILED). The "volume 1.00 a second later" in the log was read straight after
+  we wrote it, so it proved nothing; LIKELY the game writes 0 back every frame, after
+  us. Round 10 does not touch the game's source: it takes its `clip` and
+  `outputAudioMixerGroup` and plays them on an AudioSource of our own
+  (`ClickIdler.Voice.cs`), once per loop of the animation (animator `normalizedTime`),
+  looping for `IsLoop` entries, stopped when the animation ends. These are the
+  exercise grunts, not spoken lines.
+- **Sitting animations chosen from the wheel raced the game's own seating.** `UseSpot`
+  puts the player on the point and starts the game's walk; the game then seats the
+  player (offset) and starts an animation of its own choosing some moments later. Ours
+  was played 0.7 s after `UseSpot` regardless, so it sometimes came first: played in
+  mid-air before the offset, then replaced by the game's pick; and the seat hold,
+  taken at that moment, pinned the player at the pre-offset spot ("moved away a few
+  frames later", ring off-centre). Now the choice waits until the game is playing one
+  of the seat's own animations for 0.35 s (`PendingChoice`, 5 s limit).
+- **The hold** (`Hold` / `Pin` / `Release`): from the first animation that is not the
+  seat's plain pose until the player leaves (movement key, a walk, another target, map
+  change, conversation), the player is put back after `SimulationScene.Update` and
+  after the player's `AIBase.FixedUpdate`. Activity ("borrowed") seats are held from
+  the moment of sitting, since nothing in the game keeps a character there.
+- The cafe's "with" table (activity Meal) seats are the ones the idle key reached and
+  a click did not: they are activity seats. A click now walks to the floor beside one
+  and sits by hand on arrival (`WalkToBorrowed`, `PendingBorrow`).
+- `SV.Chara.Base` also has `SetMapPosition(map, MovePointInfo)`,
+  `SetPositionAndRotation(Transform)`, `SetObjectsPosition(Transform)` /
+  `RestoreObjectsPosition()` (LIKELY the ring and particles, kept apart from a seated
+  body) and `SetRotationObjParticleCircle`. Not used yet; the first place to look if the
+  ring is off-centre again after sitting.
+- LIKELY: `JobDetail.SetOffset(_baseTrans)` moves the *point's* transform (or its
+  `transPair`) to the seat while in use and `RestoreOffset` puts it back, which is why
+  both take a base transform. UNVERIFIED.
+- Fitting, standing, is now only what standing spots offer with no activity and needs
+  no seat (it had become the same list as Map Animations once "standing" points turned
+  out to carry desk and activity animations).
+- Favorites: no Favorite Key any more, the number keys only; the star shows "1, 3" in
+  the collection's colour (gold, blue, pink; green in two; violet in all three).
+- The Reset All Settings row has its label again; the button ends where other rows'
+  Reset buttons begin (a spacer of that width).
+
+**Round 10 result (developer, 2026-10-04), and round 11 (UNVERIFIED).**
+- **Sounds work**: the game's clip played on our own AudioSource through the same mixer
+  group. CONFIRMED.
+- The idle key seats the player correctly on every cafe and classroom seat. CONFIRMED.
+- **Activity ("borrowed") seats did not hold.** Seated by hand the player was right at
+  first and a few seconds later stood at another spot, the same spot a click put them
+  at from the start; clicking again flipped between the two. LIKELY the walker
+  (`SVRichAI`, A* `RichAI`): it keeps its character on the nav mesh and writes the
+  transform in its own Update, after our pin, so the pin in `SimulationScene.Update` and
+  after `AIBase.FixedUpdate` lost every frame. Idle and hand-driven it was dormant, which
+  is why third person looked right for a while; after a click-walk it was awake at once.
+  Round 11: while held, `walker.updatePosition` and `updateRotation` are false (saved and
+  put back on release); the pin stays as a second line. `Pathfinding.AIBase` also has
+  `canMove`, `isStopped`, `simulatedPosition`, `Teleport(pos, clearPath)`.
+- **Leaving a seat by hand** (keys or stick; `ThirdPersonController.Handling`): the ring
+  kept the offset the game gave it for the seat and trailed beside the player until the
+  game next walked them. Now `Base.RestoreObjectsPosition()` is called at that moment.
+  UNVERIFIED that this is the game's own undo. The seat is also remembered as left
+  (`_leftSeat`): it stayed "the current seat" while the player stood within 1 m of it
+  with it still the game's target, so sitting animations chosen there played in the air
+  (LIKELY the Waiting Action 1 / 3 report) and the wheel kept offering the seat's list.
+- Clicking the seat one is on does nothing now.
+- The jobs' animations (`job_*`) never count as sitting. An animation chosen from the
+  wheel goes to a spot within 2 m only if that spot offers exactly it **with an offset**
+  (`NearbyOffering`: the cafe's tables for Job Waitress), or, for a sitting animation,
+  to the nearest seat; otherwise it plays where the player is.
+- A favorite's name takes its star's colour while pointed at. Wheel Size default 12.
+- **Gamepad layout 3** (replaces the table in §27 where they differ): LB = idle button
+  (`Gamepad Idle Button`: tap as the idle key in third person, in either view; hold =
+  the wheel for as long as it is held, either stick points, Select (A) plays and the
+  wheel stays up, RB / D-pad left and right turn pages, letting go closes it without
+  choosing). PoV toggle LB -> left stick click; crouch left stick click -> B, not while
+  a button on screen is selected (`GamepadUI.Active` / `UsedBThisFrame`). Migrated once
+  ("Gamepad Layout" 3) for bindings still on the old defaults, with a log line each.
+  While the pad wheel is up: `MovePlayer` ignores the sticks, `GamepadUI.Tick` and
+  `GamepadTravel.Run` stand down, the camera holds.

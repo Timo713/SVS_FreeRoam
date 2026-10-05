@@ -41,8 +41,16 @@ namespace SVS_FreeRoam
             // A seat or other special spot: walk to the game's own point, which seats the
             // character on arrival.
             if (Plugin.ClickWalkSpots.Value &&
-                ClickIdler.SpotUnderMouse(cam, playerAI, out var spot, out int job))
+                ClickIdler.SpotUnderMouse(cam, playerAI, out var spot, out int job, out int table))
             {
+                // Already sitting right there: nothing to do.
+                if (ClickIdler.SeatedOn(playerAI, spot)) return;
+                // An activity's seat (the cafe's tables): walk beside it and sit by hand.
+                if (table != 0)
+                {
+                    ClickIdler.WalkToBorrowed(playerAI, spot, table, job);
+                    return;
+                }
                 Follower.Stop("walk click");
                 Notice.Log($"Walk: to spot {ClickIdler.Describe(spot)}, job {job}.");
                 ClickIdler.NoteSpot(spot, job);
