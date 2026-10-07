@@ -74,7 +74,7 @@ namespace SVS_FreeRoam
             }
             catch (Exception e)
             {
-                Plugin.Logger.LogError("Free-roam update failed: " + e);
+                Failures.Report("Free-roam update failed", e);
             }
         }
 
@@ -96,7 +96,7 @@ namespace SVS_FreeRoam
             }
             catch (Exception e)
             {
-                Plugin.Logger.LogError("Follow speed update failed: " + e);
+                Failures.Report("Follow speed update failed", e);
             }
         }
 

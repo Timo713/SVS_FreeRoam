@@ -1970,387 +1970,194 @@ instead. UNVERIFIED in game.
   cursor is free the follow button no longer also fires interact (the walk to the aimed
   character).
 
-## 28. Click To Idle (2026-10-03)
+## 28. Idle animations, seats and the animation wheel (2026-10-03 to 10-07)
 
-**Where idle spots and their animations live (CONFIRMED from interop signatures).**
-- Each map's `PointList.urouroTable` (`Dictionary<int job, ListInfo>`, `ListInfo.points`)
-  holds the "urouro" (wander) points: the spots the game sends a character to on
-  entering a map (`MapManager.UroUroPointMove(bctrl, mapID, job -1, poses)`).
-  Reached as `mapManager.pointInfoTable[mapId].pointList`.
-- A point is a `MovePointInfo`: `poses` (`PoseKind` Stand 0, Ground 1, Chair 2, Desk 3),
-  and `urouroDetails` (`JobDetail`: `job`, `animations` = list of `AnimationInfo`
-  {`weight`, `animMotion`, `isAddH`}, `charactorOffset` (where the body is put, e.g. on
-  the seat), `moveObjectName` / `moveObject` (a prop that is moved)).
-- The game picks the animation itself: `MovePointInfo.GetAnimationID(type, job,
-  StateParameter.StateKind state, isWithPair, OnesPropertyInfo[] onesProperty)`. So the
-  choice depends on the character's **mood state** (UPLIFT ... NORMAL) and **traits**
-  (`charasGameParam.onesPropertys`), weighted. Sex is `Human.sex` (byte), personality
-  `HumanDataParameter.personality`; neither is an argument, so any male/female split
-  is in what `animMotion` resolves to. UNVERIFIED which.
+Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdler.Sets.cs`,
+`ClickIdler.Voice.cs`, `IdleWheel.cs`; left click on a seat is in `ClickWalker.cs`.
 
-**Round 1 (UNVERIFIED in game).** `ClickIdler.cs`, section "Click To Idle".
-- Click near a urouro point (any job key in the table, nearest within Max Distance To
-  Spot): `SetCharaMapMove(Personal, bctrl, {pInfo = that real point, map, type 0,
-  job = its table key})` -- the walk click-to-walk already does, but to the game's own
-  point, so arrival should play its animation.
-- Click on yourself (judged on screen, feet to head): our walk marker is put at the
-  player's feet "wearing" the `poses` and `urouroDetails` of a random standing point of
-  the map that has animations and no offset or prop (`Walker.IdleAt`, `Dress`). Open
-  questions: whether a zero-length walk reaches the arrival step at all, and whether
-  the animation is read from `pInfo` at arrival.
-- With Debug Info on, each idle click logs the point: name, position, poses, and per
-  detail the job and `animMotion x weight` list.
+### The game's data (CONFIRMED)
 
-**Settings window order (CONFIRMED from ConfigurationManager's IL).** Categories are
-ordered by first appearance, i.e. the order the entries are bound, then by name.
-Debug Info is therefore bound last.
+- **Spots**: `mapManager.pointInfoTable[mapId].pointList` (`PointList`) has five tables,
+  each `Dictionary<int job, ListInfo>` with `ListInfo.points`: `urouroTable` (the "wander"
+  points a character idles at; the game sends the player to one on entering a map),
+  `soloTable`, `withTable`, `everyoneTable`, `pcTable`. The key is the activity,
+  `MovePointInfo.JobKind` (None -1, Meal 0, Study 1, Motion 2, Job 3, ...).
+- **A point** (`MovePointInfo`): `poses` (`PoseKind` Stand 0, Ground 1, Chair 2, Desk 3) and
+  one list of `JobDetail` per table (`urouroDetails`, `soloDetails`, `withDetails`,
+  `everyoneDetails`, `pcDetails`). A `JobDetail`: `job`, `animations` (`AnimationInfo`:
+  `weight`, `animMotion`, `isAddH`), `charactorOffset` (a Transform: where the body goes,
+  e.g. onto the chair), `moveObjectName` / `moveObject` (a prop that is moved),
+  `isBackUp`, `backUpTransform`.
+- **`poses` does not say whether a point is a seat.** The classroom's desks are pose-Stand
+  points listed under Study and offering Study Desk0/1; the cafe's tables are pose-Stand
+  points whose no-activity offer includes Desk Wait and Smart Phone Desk (and Job offers
+  Job Waitress 0/1); the beach has Stand+Ground points that list only standing
+  animations. So a seat is a point that is non-standing **or** whose offer for the
+  activity it is listed under contains a sitting animation (`IsSeat`).
+- **Animations** are `SV.AnimationCtrlManager.Animation` values: stand 0, run 1, walk 3,
+  floor_wait 8, chair_wait 9, desk_wait 10, waiting_action_0..3 13-16 (0 and 2 standing:
+  stretch, drink; 1 and 3 the same on a chair), exercise 17-19, dumbbell 20, meal_*
+  21-23, work_stand/chair 24-25, smart_phone_stand/chair/desk 26-28, bookread 29-30,
+  erotic_book 31-32, game 34-35, study_desk 36-37, masturbation 38-41, job_* 45-52,
+  meal2_* 53-55, then the paired ones (stroke/hug/kiss/touch by sex, 56-95), call 96,
+  bookread_study 97, H from 1000. A typical standing spot offers 0 (weight 8) and 13, 15,
+  24, 26, 29, 31, 34; a chair 9 (weight 8), 14, 16, 25, 27, 30, 32, 35; a desk 10, 28.
+- `AnimationCtrlManager` (singleton): `IsPlayMotion(bctrl, id)`, `IsChair` / `IsDesk(bctrl)`,
+  `posePtnChairIDs`, `posePtnDeskIDs`, `GetHash(id)`, `SetAnim(bctrl, animator, actor, id,
+  duration, force, lockFlag, blend)`, `SetItemVisible(bctrl)` (what the animation holds).
+  `Base.SetLowpolyAnimation(id, lockFlag, blend, duration, force)` plays one plainly.
+- The game picks a spot's animation itself (`MovePointInfo.GetAnimationID(type, job,
+  StateParameter.StateKind, isWithPair, onesProperty)`): by weight, mood and traits. Sex
+  and personality are not arguments.
 
-**Round 1 result (developer, 2026-10-03).** Walking to a real urouro point works: the
-character sits on chairs and on the ground (beach). CONFIRMED. The marker "wearing" a
-standing point's details also plays its animations. CONFIRMED. Wrong: right click near a
-standing spot walked there like a left click; clicks on props often missed, because most
-props have no collider and the ray lands on a plane under the floor (`'Plane' layer 8`,
-y -3.04), metres past the prop.
+### How the game seats a character (CONFIRMED from the machine code, 2026-10-07)
 
-**The animation ids are named (CONFIRMED from interop).** `animMotion` is a value of
-`SV.AnimationCtrlManager.Animation`: stand 0, run 1, walk 3, floor_wait 8, chair_wait 9,
-desk_wait 10, waiting_action_0..3 13-16, exercise 17-19, dumbbell 20, meal_* 21-23,
-work_stand 24, work_chair 25, smart_phone_stand/chair/desk 26-28, bookread_stand/chair
-29-30, erotic_book_stand/chair 31-32, game_stand/chair 34-35, study_desk 36-37,
-job_* 45-52, then paired ones (stroke/hug/kiss/touch by sex). The classroom's spots:
-Stand = 0 x8, 13, 15, 24, 26, 29, 31, 34 (+ activity 3: 51, 52); Chair = 9 x8, 14, 16,
-25, 27, 30, 32, 35; Desk = 10 x8, 28. So the suffix (or the spot's `PoseKind`) is the
-type, and the heavily weighted first entry is the plain waiting pose.
-- `AnimationCtrlManager` (singleton): `animTable` (id -> list of `AnimStateInfo`
-  {hash, name}; probably where sex or variants split, UNVERIFIED), `itemTable` (id ->
-  held items), `idlePtnIDs`, `posePtnChairIDs`, `posePtnDeskIDs`, `IsChair(bctrl)`,
-  `GetNowPtnID(animator)`, `SetAnim(bctrl, animator, actor, ptn, ...)`.
-- `SV.Chara.Base.SetLowpolyAnimation(animID, isLockFlagChange, isBlend,
-  fixedTransitionDuration, isAnimForceChange)` plays one on a character directly.
+- The body is `ai.chaCtrl.transform` (`Character.Human.transform`), a child of the AI
+  object. Seating moves the **body**, not the AI: `JobDetail.SetOffset(base)` sets the base
+  to `charactorOffset`'s world position and rotation (`SetCharactorOffset`), marks
+  `isBackUp`, moves the prop (`SetObjectOffset`). `RestoreCharactorOffset(base)` puts the
+  base back to local zero / identity. The AI stays on the floor, on the nav mesh.
+- **`GameChara.RestoreOffset(bctrl, isNavmeshColRadius = true)`** is the game's "take this
+  character off its seat": if `bctrl.target.pInfo.IsOffset()`, then
+  `pInfo.RestoreOffset(ai.chaCtrl.transform)`, `ai.RestoreObjectsPosition()` (the collider
+  `colCapsule` and the ring `objCircle` back to local zero / identity) and the walker's
+  radius back to `navMeshCollisionRadiusBase`. `MapManager.SetCharaMapMove` calls it at
+  the start of every walk, which is why a click-walk always cleaned everything up.
+- `GameChara.SetOffsetTransform(bctrl, point, TypeKind, JobKind)` seats through the game
+  (callers: `SimulationButtonAction.SetPlaceOnMap`, three talk tasks). Not used by us yet;
+  the first thing to try if seating by hand (below) gives trouble.
+- `Base.SetObjectsPosition(t)` moves the collider and the ring to a transform's world
+  pose; its callers are bath, title and talk code, not ordinary wander seats. Which code
+  applies the offset when a character arrives at a wander seat was not found (`xref.ps1`
+  sees direct calls only).
+- The walker is `bctrl.SVRichAI` (A* `RichAI`, with a rigidbody): it keeps its character on
+  the nav mesh and writes the transform itself. `updatePosition` / `updateRotation` stop
+  that.
 
-**Round 2 (UNVERIFIED).**
-- Right click acts only on yourself: click = random animation (`SetLowpolyAnimation(id,
-  false, true, 0.25, true)`, no walk at all), hold 0.35 s = `IdleWheel`.
-- Wheel contents (`ClickIdler.Choices`): at a seat (target `pInfo` is a non-standing
-  real point within 1 m) that point's animations; otherwise every animation of the
-  map's standing spots, all activities.
-- Left click (`ClickWalker`): "Use Seats And Special Spots" picks a non-standing point by
-  the distance from the mouse ray to the seat (`charactorOffset`, +0.4 m), within
-  "Spot Click Size"; no collider needed. "Idle Animation On Arrival" builds a
-  `JobDetail` for our marker from the standing ids minus 0 (`Walker.Dress`).
-- Third person (`ClickIdler.ThirdPerson`, "Use Spots In Third Person"): with nothing
-  else in reach, a seat within 1.5 m is named in the target label; releasing interact
-  uses it, holding opens the wheel, steered by mouse movement while `CameraRig` holds
-  the view still. No stick steering for the wheel yet.
-- With Debug Info on, each map logs once "Idle: animations on map N" with every kind of
-  spot and its named animations.
+### What the plugin does
 
-**Round 3 (UNVERIFIED; round 2 was committed without a detailed report).**
-- A tap while our animation is still playing (`AnimationCtrlManager.IsPlayMotion(bctrl,
-  id)`) returns to the resting pose: the seat's first listed animation, else stand 0.
-- Third person: the idle key is its own setting (Mouse2), free only while no walk is
-  under way and nobody is marked, since Go To Marked Key is Mouse2 too. Seats use
-  interact on press. The seat marker is optional, off by default.
-- Extended Animations: the wheel adds every `AnimationCtrlManager.Animation` below 1000
-  whose name has no `_f_`/`_m_` (paired) and is not run/escape/walk*.
-- `IdleWheel` is a general radial menu now: 8 fixed slots, pages turned with the mouse
-  wheel, disc and highlight wedge drawn into `Texture2D`s at run time
-  (`SetPixels32` + `Sprite.Create`), no image files.
-- Character wheel: holding the idle button on another character offers Talk
-  (`WalkToCharacter`), Follow / Stop following, and Switch to when SVS_CustomGameBalance
-  is there (`CustomGameFunctions.SwitchPCCharacter()` is static with no arguments; it is
-  invoked by reflection after our prefix marks the wanted character). Follower ignores
-  the release that closed a wheel (`ClickIdler.WheelClosedFrame`).
-- Asked for, not built: Ignore, remove from the game, replace with another character
-  (the first belongs to a plugin that does not exist yet).
+- **Sitting on a wander seat** (idle key, left click, a sitting choice from the wheel):
+  the game's own walk to the real point, `SetCharaMapMove(Personal, bctrl, {pInfo, map,
+  type 0, job = the table key})`, after putting the player on the point
+  (`playerAI.position = point position`) so there is nothing to walk. CONFIRMED: every
+  seat on the station, beach, classroom and cafe.
+- **A choice from the wheel next to a seat** (2 m): for the moment of seating the spot's
+  offer is swapped for a list holding that animation alone (`Force` / `Unforce` on
+  `JobDetail.animations`), so the game starts it and not one of its own first;
+  `PendingChoice` waits until the game is playing it for 0.35 s, restores the offer and
+  does the bookkeeping (`Playing`). UNVERIFIED that the game goes by the narrowed list;
+  if not, its pick plays first and ours after, as before.
+- **Activity seats** (the cafe's "with" table for Meal; found when no wander seat is in
+  reach): the game only uses them during the activity, so the player is sat by hand, the
+  AI transform itself moved to `charactorOffset` (`UseBorrowed`), and held there.
+  A click walks to the floor beside one first (`WalkToBorrowed`). CONFIRMED.
+- **The hold** (`Hold` / `Pin` / `Release`): from the first animation that is not the
+  seat's plain pose (and at once on an activity seat) until the player leaves, the
+  walker's `updatePosition` / `updateRotation` are off and the player is put back if moved.
+  Released by hand movement, a walk, a new target, another map, a conversation.
+  CONFIRMED for the cafe. The pin (after `SimulationScene.Update` and after
+  `AIBase.FixedUpdate`) alone did not hold; the walker flags did. LIKELY the pin is now
+  dead weight: remove it once a round without it is confirmed.
+- **Leaving a seat by hand** (`ThirdPersonController.Handling`): `GameChara.RestoreOffset`
+  is called at that moment (round 13, UNVERIFIED), and the seat is remembered as left
+  (`_leftSeat`) so that standing next to it no longer counts as sitting on it.
+- **Someone else's seat**: a point another character is at (1.5 m) or walking to is
+  skipped (`Taken`). UNVERIFIED.
+- **Animation sets** (`Animation Set`): Fitting (standing: what standing spots offer with
+  no activity and needs no seat, plus the seat within 2 m; seated: the seat's own), Map
+  Animations, Sitting, Favorites 1-3, All (everything single: not run/escape/walk, the
+  paired ones or H). A tap plays a random one of the set, never a sitting one while
+  standing; a second tap stops it. `job_*` never counts as sitting.
+- **Favorites**: three collections stored by name; number keys 1-3 on the wheel toggle;
+  the label is starred with the numbers and coloured (gold, blue, pink; green in two;
+  violet in three).
+- **The wheel** (`IdleWheel`): disc and highlight drawn into textures once per session
+  (512 px, mip maps, `HideAndDontSave`; redrawing per scene was a hitch), the highlight a
+  Filled / Radial360 image; a page's choices share the circle; pages by mouse wheel.
+  Mouse: hold and release; in third person a wheel with pages stays open and a click
+  chooses; a left click always chooses. `ClickIdler.BlocksInput` keeps that click from
+  walking or interacting.
+- **Keys**: cursor showing: the idle button (right) on yourself, tap or hold; on another
+  character, hold for the character wheel (Talk, Follow, Switch to). Third person: the
+  idle key (Mouse2; not while a character is marked, since Go To Marked is Mouse2 too).
+  Gamepad (layout 3, replacing the table in section 27 where they differ): LB = idle
+  button in either view, the wheel up while held, either stick points, letting go or A
+  plays; RB and D-pad left/right turn pages; the sticks are ignored for walking and
+  looking until back at rest (`PadSticksBusy`). PoV toggle = left stick click; crouch = B,
+  not while a button on screen is selected.
+- **Sounds** (`ClickIdler.Voice.cs`): `SV.LowpolyActionVoiceManager.infoTable` (45 entries,
+  numbered; `AnimStateInfo.hash` = `AnimationCtrlManager.GetHash(id)`, `IsLoop`,
+  `IsNoMale`) names a clip per animation: dumbbell and the exercise ones grunt, and so
+  on. `LowpolyVoicePlay(key, playerAI)` starts the clip for the player **at volume 0**
+  (an audio source under the personality's voice object, mixer group "PCM"). We find that
+  new source and play its clip on our own AudioSource through the same group, once per
+  loop of the animation. CONFIRMED audible.
+- **Character switch from the wheel**: SVS_CustomGameBalance's static
+  `CustomGameFunctions.SwitchPCCharacter()` takes the first of
+  `SimulationManager.GetCharaWithPlayer()` whose `objCircle` and a particle ring are
+  active. Our prefix lights the wanted character's rings; `SwitchTo` puts every particle
+  ring back afterwards. Our per-player state is dropped when `GameChara.PlayerAI` changes.
 
-**Round 3 result (developer, 2026-10-04).** The wheel, pages and direct play
-(`SetLowpolyAnimation`) work. CONFIRMED. Interact-to-sit worked; a random animation
-played next to a chair sat the character badly placed and facing the wrong way.
+### Tried and failed
 
-**Round 4 (UNVERIFIED).**
-- Third person: interact no longer sits. The idle key's tap, in order: stop our
-  animation; get up from the seat (`Walker.WalkTo` the nav point nearest the seat's
-  base, the way a click-walk leaves a seat); use the seat within reach; random animation.
-- A wheel with more than one page stays open when the button is let go; the next
-  press chooses (`ClickIdler._sticky`). Click-walk is off while a wheel is open, and
-  Follower ignores the press that chose.
-- "Wheel Size" (4-16 slots). Disc 1024 px with mip maps and edges softened in the
-  drawing itself; the 256 px one upscaled was the pixelated outline.
+- Walking the last step to a seat by the game's steering in third person: the walk
+  animation sometimes stayed on. (Put the player on the point instead.)
+- A fixed 0.7 s wait before playing a wheel choice on a seat: it raced the game's own
+  seating (played in mid-air, then replaced; the hold pinned the wrong place).
+- Telling seats by `poses`: missed the classroom and the cafe.
+- Sounds: `LowpolyVoiceProc(playerAI)` every frame (silent); setting the game's audio
+  source to volume 1 (silent: the game writes 0 back).
+- Holding a hand-seated player by resetting the transform each frame: the walker writes
+  it after us.
+- Ring after walking off a seat by hand: `Base.RestoreObjectsPosition()` alone (centred
+  only sometimes: the first time in a direction, not when leaving the same way again).
+
+### Open
+
+- **The ring off-centre after walking off a seat by hand** (overview): cause not found.
+  `RestoreObjectsPosition` resets the ring to local zero, so something else is out of
+  place afterwards. Round 13 uses `GameChara.RestoreOffset` and, with Debug Info on, logs
+  where the ring, the particle rings and the body sit before, after and 1.5 s later
+  ("Idle:   before / after / a moment later"). `RingUpkeep` (round 12, never tested on
+  its own) also forces the ring's learnt local position while the left seat is still the
+  game's target. Whichever of the two turns out not to be needed must go.
+- Former player sometimes left standing with a ring after a switch: not explained;
+  does it happen with the other plugin's own button?
+- Favorites cannot be starred from the gamepad.
+- `ClickIdler.Seats.cs` is about 1000 lines.
 
 ## 29. Depth of field in third person (2026-10-04)
 
 - The game's depth of field is **Beautify** (`Beautify.Universal.Beautify`, a URP volume
-  component in `Beautify.Universal.Runtime.dll`), switched by
-  `SV.Config.GraphicSystem.DepthOfField`. Parameters: `depthOfField`,
-  `depthOfFieldFocusMode` (FixedDistance 0, AutoFocus 1, FollowTarget 2),
-  `depthOfFieldDistance`, `depthOfFieldFocalLength`, `depthOfFieldAperture`;
-  `BeautifySettings.depthOfFieldTarget` for FollowTarget. `CameraControl` has
-  `ChangeDepthOfFieldSetting` / `UpdateDepthOfFieldSetting` (stubs to us).
-  `UnityStandardAssets.ImageEffects.DepthOfField` also exists (ADV backup code) but is a
-  built-in-pipeline effect. LIKELY unused.
-- Reported: with it on, characters near the third-person camera are blurred. The old
-  "Hide Blur" option was something else (`HighPolyBackGroundFrame.mainCamera`).
-- `PovFocus` (UNVERIFIED): while third person runs, every Beautify component found in
-  the scene's volumes gets focus mode FixedDistance at the camera-to-player distance
-  (at least 1.2 m), or `depthOfField` false with the Off choice; the game's values are
-  put back when third person ends. With Debug Info on it logs each volume's values
-  once ("Depth of field: volume ..."): if the fix does nothing, that line says whether
-  the game uses a volume at all and with which focus mode.
+  component), switched by `SV.Config.GraphicSystem.DepthOfField`. Each map has a global
+  volume with its own values, all focus mode FixedDistance (0; AutoFocus 1, FollowTarget
+  2): for example distance 10.1 / focal length 0.011 / aperture 67.85, 9 / 0.15 / 4,
+  8.34 / 0.308 / 0.9. Tuned for the overview camera, so anyone near a third-person
+  camera was in the blurred foreground. (The old "Hide Blur" option was something else:
+  `HighPolyBackGroundFrame.mainCamera`.)
+- `PovFocus` (CONFIRMED working): while third person runs and no menu or conversation is
+  up, every Beautify component in the scene's volumes gets FixedDistance at the
+  camera-to-player distance and an aperture scaled by (new distance - f) / (the map's
+  distance - f), which keeps the far background as blurred as the map's own setting,
+  times "Third Person Blur Strength" (0 to 5). In first person the focus is the aimed
+  character, else no blur. Distance and blur weight are eased (rate 4). The game's values
+  are put back on leaving. Rescans on a map change and every half second.
 
-**Report from a player (unresolved):** "F4 only hides the UI, the camera does not
-change", after uninstalling an old plugin called ThirdPOV. Not reproduced. `CameraRig
-.Place` now warns once in the log when the camera is somewhere else on the next frame
-for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is needed.
+## 30. Other versions of the game (2026-10-07)
 
-**Round 4 result (developer, 2026-10-04), and round 5 (UNVERIFIED).**
-- Sitting by a tap in third person worked but sometimes left the walk animation running
-  on the way to the seat (third person steers the player by hand while the game's walk
-  runs; the same as at doorways). Now the player is put on the point first
-  (`playerAI.position = spot.transform.position`, then the same `SetCharaMapMove`), and
-  the reach is 1 m.
-- The wheel hitched the first time on each map: its textures were redrawn whenever the
-  scene's canvas was rebuilt, at 1024 px. They are drawn once now, 512 px, kept with
-  `HideFlags.HideAndDontSave`. The highlight is one ring sprite on a Filled / Radial360
-  `Image` (`fillAmount = 1 / choices`), so any number of choices per page works and a
-  page's choices always share the whole circle.
-- The wheel stays open after release only in third person with more than one page (and
-  for the favourites wheel opened by a tap). A left click always chooses;
-  `ClickIdler.BlocksInput` keeps that click from walking, interacting or click-walking
-  until every mouse button is up.
-- Favourites: names in the "Favourite Animations" setting, toggled with the Favourite Key
-  on the wheel. "Tap Plays": random / favourites wheel / one chosen animation.
-- "Animation Props And Effects": plays through `AnimationCtrlManager.SetAnim(bctrl,
-  animator, actor, id, 0.25, force true, lockFlag false, blend true)` and
-  `SetItemVisible(bctrl)`, falling back to `SetLowpolyAnimation`. Whether this adds props
-  or sounds over the plain call is UNVERIFIED; no separate sound call for map
-  animations was found in the interop (sounds may be animation events on the clips).
-- **Depth of field values per map (CONFIRMED from the log):** each map has a global
-  volume with Beautify, all FixedDistance: distance 10.1 / focal length 0.011 /
-  aperture 67.85 ('Global Volume_m00'); 9 / 0.15 / 4; 8.34 / 0.308 / 0.9. A base
-  'Global Volume' (priority -1) has it off. So the look differs a lot by map.
-  `PovFocus` now scales the aperture by (new distance - f) / (map's distance - f), which
-  keeps the far background as blurred as the map's own setting does, times "Third
-  Person Blur Strength"; rescans on a map change; in first person focuses on the aimed
-  character or switches the blur off; and stands down under menus and conversations.
-
-**Round 5 result (developer, 2026-10-04), and round 6 (UNVERIFIED).**
-- Instant sitting, the wheel, favorites and the per-map depth of field work. CONFIRMED.
-- **Voices.** NPCs acting on their own speak during some animations (dumbbell and the
-  exercise ones at the shrine); the player never did, and characters invited to an
-  activity do not either. Those NPCs carry an `ObservableDestroyTrigger` (UniRx).
-  `SV.LowpolyActionVoiceManager` (singleton): `infoTable` (by animation state),
-  `oldAnimationTable`, `LowpolyVoiceProc(AI)`, `LowpolyVoicePlay(id, AI)`. `ClickIdler
-  .Voice` now calls `LowpolyVoiceProc(playerAI)` every frame while an animation we
-  started is playing. UNVERIFIED that this is the call the game makes for NPCs.
-- **The invisible-characters bug, explained.** Under a menu or an activity scene third
-  person hides the player and their companions (`ApplyCharacterVisibility`,
-  `_visibleAll` false). Switching to the overview camera in the middle of the scene
-  stopped that code, so nobody was shown again until third person ran once more or the
-  map changed. `Disable` now calls `ShowEveryone` on the way out of third person.
-- A 1 m reach lost the seats behind desks (cafe, classroom): the point cannot be walked
-  up to that closely. Back to 1.5 m; the player is still put on the point, so no walk.
-- Tap Plays "Random Favorite" plays one (not a wheel); standing, animations made for a
-  chair or desk are left out (`AnimationCtrlManager.posePtnChairIDs` / `posePtnDeskIDs`).
-- Settings: "Crouch Key Function" (Toggle / Double Tap / While Pressed) replaces
-  Double-Tap To Crouch; double-tap sprint and double-tap walk/run are always on;
-  "Reset All Settings" is a custom drawer button under Enable (two clicks).
-- Depth of field: the focus distance and the blur's weight are eased
-  (`1 - exp(-speed * dt)`), "Third Person Focus Speed"; the offset setting is gone.
-
-**Round 6 result (developer, 2026-10-04), and round 7 (UNVERIFIED).**
-- **Voices still silent.** Calling `LowpolyVoiceProc(playerAI)` every frame did not
-  throw and did not speak. TRIED, FAILED as the whole answer. Round 7 calls
-  `LowpolyVoicePlay(key, playerAI)` once when an animation starts, with the `infoTable`
-  entry whose key or `hash` equals `AnimationCtrlManager.GetHash(id)` (or the id), and
-  with Debug Info logs "Idle voice: ..." (hash, match, result) plus, once, the whole
-  table and every animation's hash. If there is no match the table is keyed some other
-  way and that dump says how. `AnimStateInfo`: `hash`, `name`, `IsLoop`, `IsNoMale`,
-  `bundleInfos`.
-- **Seats missing in the classroom and at the cafe's tables** were not the reach: those
-  seats are not wander (urouro) points. They belong to activities (Study, a meal with
-  someone), in the solo / with / everyone / pc tables, each point's `soloDetails` /
-  `withDetails` / `everyoneDetails` / `pcDetails`. Reach is 1 m again. When no wander
-  seat is in reach, `NearbySpot` now looks through those tables and `UseBorrowed` seats
-  the player by hand: `playerAI.transform` to the detail's `charactorOffset` (position
-  and rotation), first listed animation. Getting up is the usual walk to the floor.
-  Open questions: whether the game's idle tree leaves the player there (a log line
-  says so if not), and props (`moveObjectName`, a chair pulled out) are not moved.
-  Only the third-person idle key reaches these; click-to-walk still uses wander seats.
-- The reference list ("Idle: animations on map") now ends with the activity tables'
-  seats per activity.
-- Debug Info was off in the round 6 test (Reset All Settings switches it off too).
-
-**Round 7 result (developer, 2026-10-04), and round 8 (UNVERIFIED).**
-- **A point's `poses` does not say whether it is a seat.** From the per-map lists: the
-  classroom (map 4) has 24 points with pose Stand listed in the urouro table under key 1
-  (Study) offering Study Desk0/1; the cafe (map 1) has pose-Stand points whose
-  activity-None offer includes Desk Wait and Smart Phone Desk, and Job offers Job
-  Waitress 0/1; the beach (map 3) has Stand+Ground points whose offer lists only standing
-  animations. The activity tables' points are pose Stand too ("0 seats" everywhere), so
-  round 7's borrowed seats never triggered. A seat is now a point that is non-standing
-  **or** whose offer for the activity it is listed under contains a sitting animation
-  (`ClickIdler.IsSeat`), and it is used with that activity as the job
-  (`SetCharaMapMove`, type 0, job = the table key). UNVERIFIED that the game then seats
-  the player as it seats NPCs; `Describe` now logs a point detail by detail (activity,
-  animations x weight, offset, prop) to settle the cafe's mixed offers.
-- **Voices: the table is keyed by a running number; `AnimStateInfo.hash` is the
-  animation's state hash** (= `AnimationCtrlManager.GetHash(id)`), 45 entries, all
-  `IsNoMale`. CONFIRMED from the dump: dumbbell 20 -> key 3 'f_training_00', exercise
-  17-19 -> keys 0-2, study 36/37 -> 18/19, and so on. `LowpolyVoicePlay(key, playerAI)`
-  **returns true and nothing is heard**. (Round 7 also matched Stand to key 0 by
-  mistake, through an id comparison; removed.) Round 8 lists, a second after each line,
-  every playing AudioSource (clip, volume, 3D, distance, mixer group) to see whether
-  the clip plays at all. The per-frame `LowpolyVoiceProc` call is gone.
-- Sitting animations (`NeedsSeat`: the game's `posePtnChairIDs` / `posePtnDeskIDs`, names
-  with chair or desk, and 14 / 16): Chair Wait 9, Desk Wait 10, Waiting Action 1 and 3,
-  Meal Chair 22, Meal Desk 23, Work Chair 25, Smart Phone Chair 27 / Desk 28, Bookread
-  Chair 30, Erotic Book Chair 32, Game Chair 35, Study Desk0/1 36-37, Masturbation
-  Chair 40 / Desk 41, Meal2 Chair 54 / Desk 55.
-- Settings: "Animation Set" (Fitting, Map Animations, Sitting, Favorites 1-3, All)
-  replaces Extended Animations, Tap Plays and Tap Animation; a tap plays a random one
-  of the set. Three favorite collections. `HideSettingName` added to our
-  ConfigurationManagerAttributes copy for the full-row Reset button.
-
-**Round 8 result (developer, 2026-10-04), and round 9 (UNVERIFIED).**
-- Seats by what a spot offers: the classroom's desks and the cafe's tables seat the
-  player through the game's own walk (job = the table key). CONFIRMED. Station and beach
-  still work.
-- **Voices: the line does start, at volume 0.** One second after `LowpolyVoicePlay`:
-  `c04/sv_004_ms_000_422 ... volume 0.00 mute False 3D 0.0 ... group PCM`, an audio
-  source under the personality's voice object (`c04`), not under the player. CONFIRMED.
-  So the game plays the player's line muted (or fades it by something we do not
-  drive). Round 9 notes the PCM sources playing before the call, finds the new one
-  after it and sets its volume to 1 every frame while it plays (`KeepVoiceAudible`).
-- At the cafe, playing a meal animation on a seat made the game slide the player off
-  the seat about a second later, animation still running; Desk Wait and Smart Phone
-  Desk (the seat's own) stay. LIKELY the idle tree undoing the seat's offset when the
-  animation is not one of the seat's. While an animation of ours plays on a seat the
-  player is now kept at the seated position (`SeatUpkeep`), released by a movement key,
-  a walk, or the animation ending; it logs once how far the game moved them.
-- A sitting animation chosen from the wheel while standing next to a seat sits the
-  player there first (`PlayChoice`: `UseSpot`, then the animation 0.7 s later).
-- Markers are the player's own ring, a child of the player: placed before the player
-  moves in the same pass, they jumped for a frame on every turn. `SteadyMarker` puts
-  the ring back after `MovePlayer`. Leaving third person now always puts the ring's
-  local position back (it was only done with Overview Restore on).
-- Favorites: number keys 1-3 on the wheel toggle that collection; labels show the star
-  with the collection numbers. Spot Click Size default 0.6.
-
-**Round 9 result (developer, 2026-10-04), and round 10 (UNVERIFIED).**
-- **Sound: setting the game's audio source to volume 1 did not make it audible**
-  (TRIED, FAILED). The "volume 1.00 a second later" in the log was read straight after
-  we wrote it, so it proved nothing; LIKELY the game writes 0 back every frame, after
-  us. Round 10 does not touch the game's source: it takes its `clip` and
-  `outputAudioMixerGroup` and plays them on an AudioSource of our own
-  (`ClickIdler.Voice.cs`), once per loop of the animation (animator `normalizedTime`),
-  looping for `IsLoop` entries, stopped when the animation ends. These are the
-  exercise grunts, not spoken lines.
-- **Sitting animations chosen from the wheel raced the game's own seating.** `UseSpot`
-  puts the player on the point and starts the game's walk; the game then seats the
-  player (offset) and starts an animation of its own choosing some moments later. Ours
-  was played 0.7 s after `UseSpot` regardless, so it sometimes came first: played in
-  mid-air before the offset, then replaced by the game's pick; and the seat hold,
-  taken at that moment, pinned the player at the pre-offset spot ("moved away a few
-  frames later", ring off-centre). Now the choice waits until the game is playing one
-  of the seat's own animations for 0.35 s (`PendingChoice`, 5 s limit).
-- **The hold** (`Hold` / `Pin` / `Release`): from the first animation that is not the
-  seat's plain pose until the player leaves (movement key, a walk, another target, map
-  change, conversation), the player is put back after `SimulationScene.Update` and
-  after the player's `AIBase.FixedUpdate`. Activity ("borrowed") seats are held from
-  the moment of sitting, since nothing in the game keeps a character there.
-- The cafe's "with" table (activity Meal) seats are the ones the idle key reached and
-  a click did not: they are activity seats. A click now walks to the floor beside one
-  and sits by hand on arrival (`WalkToBorrowed`, `PendingBorrow`).
-- `SV.Chara.Base` also has `SetMapPosition(map, MovePointInfo)`,
-  `SetPositionAndRotation(Transform)`, `SetObjectsPosition(Transform)` /
-  `RestoreObjectsPosition()` (LIKELY the ring and particles, kept apart from a seated
-  body) and `SetRotationObjParticleCircle`. Not used yet; the first place to look if the
-  ring is off-centre again after sitting.
-- LIKELY: `JobDetail.SetOffset(_baseTrans)` moves the *point's* transform (or its
-  `transPair`) to the seat while in use and `RestoreOffset` puts it back, which is why
-  both take a base transform. UNVERIFIED.
-- Fitting, standing, is now only what standing spots offer with no activity and needs
-  no seat (it had become the same list as Map Animations once "standing" points turned
-  out to carry desk and activity animations).
-- Favorites: no Favorite Key any more, the number keys only; the star shows "1, 3" in
-  the collection's colour (gold, blue, pink; green in two; violet in all three).
-- The Reset All Settings row has its label again; the button ends where other rows'
-  Reset buttons begin (a spacer of that width).
-
-**Round 10 result (developer, 2026-10-04), and round 11 (UNVERIFIED).**
-- **Sounds work**: the game's clip played on our own AudioSource through the same mixer
-  group. CONFIRMED.
-- The idle key seats the player correctly on every cafe and classroom seat. CONFIRMED.
-- **Activity ("borrowed") seats did not hold.** Seated by hand the player was right at
-  first and a few seconds later stood at another spot, the same spot a click put them
-  at from the start; clicking again flipped between the two. LIKELY the walker
-  (`SVRichAI`, A* `RichAI`): it keeps its character on the nav mesh and writes the
-  transform in its own Update, after our pin, so the pin in `SimulationScene.Update` and
-  after `AIBase.FixedUpdate` lost every frame. Idle and hand-driven it was dormant, which
-  is why third person looked right for a while; after a click-walk it was awake at once.
-  Round 11: while held, `walker.updatePosition` and `updateRotation` are false (saved and
-  put back on release); the pin stays as a second line. `Pathfinding.AIBase` also has
-  `canMove`, `isStopped`, `simulatedPosition`, `Teleport(pos, clearPath)`.
-- **Leaving a seat by hand** (keys or stick; `ThirdPersonController.Handling`): the ring
-  kept the offset the game gave it for the seat and trailed beside the player until the
-  game next walked them. Now `Base.RestoreObjectsPosition()` is called at that moment.
-  UNVERIFIED that this is the game's own undo. The seat is also remembered as left
-  (`_leftSeat`): it stayed "the current seat" while the player stood within 1 m of it
-  with it still the game's target, so sitting animations chosen there played in the air
-  (LIKELY the Waiting Action 1 / 3 report) and the wheel kept offering the seat's list.
-- Clicking the seat one is on does nothing now.
-- The jobs' animations (`job_*`) never count as sitting. An animation chosen from the
-  wheel goes to a spot within 2 m only if that spot offers exactly it **with an offset**
-  (`NearbyOffering`: the cafe's tables for Job Waitress), or, for a sitting animation,
-  to the nearest seat; otherwise it plays where the player is.
-- A favorite's name takes its star's colour while pointed at. Wheel Size default 12.
-- **Gamepad layout 3** (replaces the table in §27 where they differ): LB = idle button
-  (`Gamepad Idle Button`: tap as the idle key in third person, in either view; hold =
-  the wheel for as long as it is held, either stick points, Select (A) plays and the
-  wheel stays up, RB / D-pad left and right turn pages, letting go closes it without
-  choosing). PoV toggle LB -> left stick click; crouch left stick click -> B, not while
-  a button on screen is selected (`GamepadUI.Active` / `UsedBThisFrame`). Migrated once
-  ("Gamepad Layout" 3) for bindings still on the old defaults, with a log line each.
-  While the pad wheel is up: `MovePlayer` ignores the sticks, `GamepadUI.Tick` and
-  `GamepadTravel.Run` stand down, the camera holds.
-
-**Round 11 result (developer, 2026-10-05), and round 12 (UNVERIFIED).**
-- Holding seats with the walker's `updatePosition` / `updateRotation` off works: the
-  cafe's seats hold, by click and by key. CONFIRMED. The gamepad idle button and wheel
-  work. CONFIRMED.
-- **The body is a child of the character**: hand movement has always reset
-  `playerAI.chaCtrl.transform.localPosition` to zero (inherited from SVS_3rdPov), so the
-  game seats a character by offsetting the body (`chaCtrl`) under an AI transform that
-  stays on the floor, and `SetObjectsPosition` LIKELY moves the ring out to the body.
-  (Activity seats, which we do by hand, move the AI transform itself: hence the walker.)
-- **Ring after walking off a seat by hand:** `RestoreObjectsPosition()` at that moment
-  helps only sometimes (developer: centred the first time in a direction, off-centre
-  when leaving the same way again). Cause not found; the game still has the player
-  down as seated and LIKELY moves the ring again. Round 12 also learns where the ring
-  and the particle rings sit under the player (`RingUpkeep`, learnt only away from any
-  spot with an offset) and keeps them there for as long as the left seat is still the
-  game's target for the player, outside third person.
-- **No more double animation when a sitting animation is chosen from the wheel:** for
-  the moment of seating, the spot's offer for that activity is swapped for a list holding
-  the chosen animation alone (`Force` / `Unforce` on `JobDetail.animations`), so the
-  game starts that one. UNVERIFIED that the game reads the list at that point; if it
-  does not, the old behaviour remains (the game's pick, then ours). Activity seats are
-  sat on directly in the chosen animation.
-- Fitting, standing next to a seat (2 m), lists that seat's animations first.
-- A favorite's whole label is in its colour; the per-choice highlight colour is gone.
-- Gamepad wheel: letting LB go plays what a stick points at; A plays and closes. The
-  sticks are ignored for walking and looking until both are back at rest
-  (`ClickIdler.PadSticksBusy`).
-- **Character switch from the wheel:** SVS_CustomGameBalance's `SwitchPCCharacter` takes
-  the first of `SimulationManager.GetCharaWithPlayer()` whose `objCircle` and a particle
-  ring are active, then on the old player sets `isThinking`, `isAuto`, `objCircle` off,
-  `isPC` false, and on the new one `isPC`, `isThinking`, stamina, `GameChara.SetPlayer`,
-  `objCircle` on. It never touches particle rings. Our prefix lit *all* the wanted
-  character's particle rings and left them lit; `SwitchTo` now puts every particle ring
-  back as it was. Reported: sometimes the former player then stands idle with a ring
-  under both. Not explained; whether it happens with the plugin's own button is the
-  question to ask. Our per-player state (seat hold, animation, follow) is now dropped
-  when `GameChara.PlayerAI` changes.
-- Crouch Key Function: "While Pressed" is "While Held" (`WhileHeld`; an old value in
-  the file is carried over).
+- A player's log (BepInEx 6.0.0-be.725, the game's first HF patch; ours is be.752): the
+  toggle hid the UI and the camera never moved. Every frame threw `MissingMethodException:
+  ... Dictionary<Int32, SV.MapInfoParam> Manager.MapManager.get_mapListTable()` in
+  `FindNearestTarget`, before the camera is placed. In the game we build against
+  `MapManager.mapListTable` is **static**; in that older game it was not. The instance
+  property `MapManager.MapListTable` exists in both and is what the code uses now. A
+  second player reported the same symptom.
+- Members missing in another game version only show when first used, one at a time. So
+  `Compat` (in `Compat.cs`): on the first `MissingMemberException` / `TypeLoadException`
+  from a per-frame pass, every type and member reference in our own assembly is resolved
+  once (`System.Reflection.Metadata` for the tokens, `Module.ResolveMember` to resolve as
+  the runtime does) and the failures are logged together with `Application.version`, with
+  a notice on screen. UNVERIFIED on a real old install: ask reporters for that block.
+- `Failures.Report` logs a repeating per-frame error once and then counts it (that log was
+  1 MB of the same four lines).
+- That install also still had SVS_3rdPov 0.0.5; it was switched off as intended.

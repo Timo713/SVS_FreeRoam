@@ -231,6 +231,8 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<KeyCode> HideCharacterKey;
         internal static ConfigEntry<KeyCode> ViewResetKey;
         internal static ConfigEntry<KeyCode> ViewResetKey2;
+        internal static ConfigEntry<KeyCode> FirstPersonKey;
+        internal static ConfigEntry<KeyCode> FirstPersonKey2;
         internal static ConfigEntry<KeyCode> HideCharacterKey2;
         internal static ConfigEntry<KeyCode> CrouchKey;
         internal static ConfigEntry<KeyCode> CrouchKey2;
@@ -780,6 +782,12 @@ namespace SVS_FreeRoam
             SetPairDrawer(HideCharacterKey, HideCharacterKey2);
             CarryOver(ViewResetKey, "Hotkeys", "View Reset Key");
             SetPairDrawer(ViewResetKey, ViewResetKey2);
+
+            FirstPersonKey2 = BindSecond("First Person Key 2");
+            FirstPersonKey = Config.Bind("Hotkeys", "First Person Key", KeyCode.Space,
+                Paired("In third person, switch to first person, and back to where the camera was.",
+                       null, 64));
+            SetPairDrawer(FirstPersonKey, FirstPersonKey2);
             SetPairDrawer(CrouchKey, CrouchKey2);
 
 

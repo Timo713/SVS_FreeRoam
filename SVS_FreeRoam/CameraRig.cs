@@ -21,6 +21,7 @@ namespace SVS_FreeRoam
 
         private static float _pitch, _yaw;
         private static float _distance = 3f, _targetDistance = 3f;
+        private static float _distanceBefore;          // where the camera was when the first person key took it in
         private static float _fov = BaseFov, _targetFov = BaseFov;
         private static bool _started;
 
@@ -276,6 +277,21 @@ namespace SVS_FreeRoam
                  Keys.Down(Plugin.GamepadResetViewKey, Plugin.GamepadResetViewKey2)))
             {
                 _targetDistance = StartDistance;
+                _targetFov = BaseFov;
+            }
+
+            // One key between first person and wherever the camera was before, as in Aicomi.
+            // First person is the camera zoomed all the way in.
+            if (Keys.Down(Plugin.FirstPersonKey, Plugin.FirstPersonKey2) && !ClickIdler.BlocksInput)
+            {
+                float closest = Plugin.MinZoom.Value;
+                if (_targetDistance <= closest + 0.0001f)
+                    _targetDistance = _distanceBefore > closest + 0.05f ? _distanceBefore : StartDistance;
+                else
+                {
+                    _distanceBefore = _targetDistance;
+                    _targetDistance = closest;
+                }
                 _targetFov = BaseFov;
             }
 

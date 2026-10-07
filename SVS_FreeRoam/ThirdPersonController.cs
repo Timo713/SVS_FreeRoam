@@ -594,7 +594,7 @@ namespace SVS_FreeRoam
         internal static void CrossDoorway(MapManager mapManager, SV.Chara.AI playerAI, SVNodeLink2 link)
         {
             MapInfoParam dest = null;
-            MapManager.mapListTable.TryGetValue(link.endMapID, out dest);
+            mapManager.MapListTable?.TryGetValue(link.endMapID, out dest);
             TakeDoorway(mapManager, playerAI, link, dest);
         }
 
@@ -842,7 +842,7 @@ namespace SVS_FreeRoam
                     if (link.startMapID != mapManager.MapID || link.endMapID == 15) continue;
 
                     MapInfoParam dest = null;
-                    MapManager.mapListTable.TryGetValue(link.endMapID, out dest);
+                    mapManager.MapListTable?.TryGetValue(link.endMapID, out dest);
                     if (dest == null) continue;
                     if (dest.Kind != 0 && playerAI.BehaviourCtrl.ChaseBehaviourCtrl == null) continue;
 
@@ -995,7 +995,7 @@ namespace SVS_FreeRoam
             if (target.Link != null)
             {
                 MapInfoParam dest = null;
-                MapManager.mapListTable.TryGetValue(target.Link.endMapID, out dest);
+                mapManager.MapListTable?.TryGetValue(target.Link.endMapID, out dest);
                 ui?.SetTargetCharaName(dest?.Name);
                 ShowMarker(playerAI, target.Link.transform.position);
 
