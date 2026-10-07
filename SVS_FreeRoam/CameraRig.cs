@@ -289,7 +289,8 @@ namespace SVS_FreeRoam
                 if (allowZoom) ApplyZoom(Input.GetAxis("Mouse ScrollWheel"));
 
                 // Degrees per second, unlike the mouse, which reports movement per frame.
-                var stick = Gamepad.RightStick;
+                // (Not a stick that has just chosen from the animation wheel and is still tilted.)
+                var stick = ClickIdler.PadSticksBusy ? Vector2.zero : Gamepad.RightStick;
                 float stickRate = 150f * Plugin.GamepadLookSpeed.Value * Time.deltaTime;
                 _yaw += stick.x * stickRate;
                 _pitch += (Plugin.GamepadInvertY.Value ? stick.y : -stick.y) * stickRate;
@@ -395,7 +396,7 @@ namespace SVS_FreeRoam
             }
 
             var function = Plugin.CrouchFunction.Value;
-            if (function == CrouchMode.WhilePressed)
+            if (function == CrouchMode.WhileHeld)
             {
                 _crouchLatched = false;
                 _ignoreHeldCrouch = false;

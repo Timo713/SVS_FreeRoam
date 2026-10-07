@@ -2314,3 +2314,43 @@ for 120 frames running, i.e. another plugin is moving it. Their LogOutput.log is
   ("Gamepad Layout" 3) for bindings still on the old defaults, with a log line each.
   While the pad wheel is up: `MovePlayer` ignores the sticks, `GamepadUI.Tick` and
   `GamepadTravel.Run` stand down, the camera holds.
+
+**Round 11 result (developer, 2026-10-05), and round 12 (UNVERIFIED).**
+- Holding seats with the walker's `updatePosition` / `updateRotation` off works: the
+  cafe's seats hold, by click and by key. CONFIRMED. The gamepad idle button and wheel
+  work. CONFIRMED.
+- **The body is a child of the character**: hand movement has always reset
+  `playerAI.chaCtrl.transform.localPosition` to zero (inherited from SVS_3rdPov), so the
+  game seats a character by offsetting the body (`chaCtrl`) under an AI transform that
+  stays on the floor, and `SetObjectsPosition` LIKELY moves the ring out to the body.
+  (Activity seats, which we do by hand, move the AI transform itself: hence the walker.)
+- **Ring after walking off a seat by hand:** `RestoreObjectsPosition()` at that moment
+  helps only sometimes (developer: centred the first time in a direction, off-centre
+  when leaving the same way again). Cause not found; the game still has the player
+  down as seated and LIKELY moves the ring again. Round 12 also learns where the ring
+  and the particle rings sit under the player (`RingUpkeep`, learnt only away from any
+  spot with an offset) and keeps them there for as long as the left seat is still the
+  game's target for the player, outside third person.
+- **No more double animation when a sitting animation is chosen from the wheel:** for
+  the moment of seating, the spot's offer for that activity is swapped for a list holding
+  the chosen animation alone (`Force` / `Unforce` on `JobDetail.animations`), so the
+  game starts that one. UNVERIFIED that the game reads the list at that point; if it
+  does not, the old behaviour remains (the game's pick, then ours). Activity seats are
+  sat on directly in the chosen animation.
+- Fitting, standing next to a seat (2 m), lists that seat's animations first.
+- A favorite's whole label is in its colour; the per-choice highlight colour is gone.
+- Gamepad wheel: letting LB go plays what a stick points at; A plays and closes. The
+  sticks are ignored for walking and looking until both are back at rest
+  (`ClickIdler.PadSticksBusy`).
+- **Character switch from the wheel:** SVS_CustomGameBalance's `SwitchPCCharacter` takes
+  the first of `SimulationManager.GetCharaWithPlayer()` whose `objCircle` and a particle
+  ring are active, then on the old player sets `isThinking`, `isAuto`, `objCircle` off,
+  `isPC` false, and on the new one `isPC`, `isThinking`, stamina, `GameChara.SetPlayer`,
+  `objCircle` on. It never touches particle rings. Our prefix lit *all* the wanted
+  character's particle rings and left them lit; `SwitchTo` now puts every particle ring
+  back as it was. Reported: sometimes the former player then stands idle with a ring
+  under both. Not explained; whether it happens with the plugin's own button is the
+  question to ask. Our per-player state (seat hold, animation, follow) is now dropped
+  when `GameChara.PlayerAI` changes.
+- Crouch Key Function: "While Pressed" is "While Held" (`WhileHeld`; an old value in
+  the file is carried over).

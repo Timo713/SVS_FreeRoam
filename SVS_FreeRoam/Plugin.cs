@@ -14,7 +14,7 @@ namespace SVS_FreeRoam
     {
         Toggle,
         DoubleTap,
-        WhilePressed,
+        WhileHeld,
     }
 
     /// <summary>What third person does with the game's depth of field.</summary>
@@ -579,7 +579,10 @@ namespace SVS_FreeRoam
                 "Movement", "Crouch Key Function", CrouchMode.Toggle,
                 Ordered("How the crouch key works: Toggle crouches on one press and stands up on the " +
                         "next; Double Tap does that on a double-tap, and crouches while held; While " +
-                        "Pressed crouches only while held. Crouching only works in first person.", 97));
+                        "Held crouches only while it is held. Crouching only works in first person.", 97));
+            // The third choice was called While Pressed.
+            if (ValueInFile("Movement", "Crouch Key Function") == "WhilePressed")
+                CrouchFunction.Value = CrouchMode.WhileHeld;
 
             StaminaAffectsSpeed = Config.Bind(
                 "Movement", "Stamina Affects Speed", true,
@@ -678,7 +681,8 @@ namespace SVS_FreeRoam
                 KeyCode.JoystickButton4,
                 Paired("LB. Tap to sit on the seat next to you or play an idle animation; tap again " +
                        "to get up or stop. Hold for the animation wheel: tilt a stick to an " +
-                       "animation and press Select (A) to play it; RB or the D-pad turns its pages.",
+                       "animation and let go, or press Select (A), to play it; RB or the D-pad " +
+                       "turns its pages.",
                        null, 26));
 
             GamepadToggleKey2 = BindSecond("Gamepad PoV Toggle Button 2");

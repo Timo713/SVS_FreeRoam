@@ -1290,7 +1290,7 @@ namespace SVS_FreeRoam
             float horizontal = Input.GetAxis("Horizontal");
             float vertical = Input.GetAxis("Vertical");
             // The animation wheel, steered with the controller, has the sticks.
-            if (ClickIdler.PadWheelOpen) horizontal = vertical = 0f;
+            if (ClickIdler.PadSticksBusy) horizontal = vertical = 0f;
 
             // Hold a mouse button to walk forward, the way Koikatsu and Aicomi do. Before the
             // merge this had to be done by patching Input.GetAxis to lie about the Vertical

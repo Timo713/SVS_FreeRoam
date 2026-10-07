@@ -30,9 +30,33 @@ namespace SVS_FreeRoam
         internal static void SwitchTo(SV.Chara.AI npc)
         {
             if (_switch == null || npc == null) return;
+
+            // The switch goes to whoever carries the game's marking rings, and BeforeSwitch
+            // lights them on the wanted character (and puts out everyone else's). The plugin
+            // itself only moves the plain ring from the old player to the new, so afterwards
+            // every particle ring goes back to how it was: they were lit to say who, not to stay.
+            var rings = new System.Collections.Generic.List<UnityEngine.GameObject>();
+            var lit = new System.Collections.Generic.List<bool>();
+            foreach (var ai in Game.AICharas)
+            {
+                var circles = ai?.particleCircles;
+                if (circles == null) continue;
+                for (int i = 0; i < circles.Count; i++)
+                {
+                    if (circles[i] == null) continue;
+                    rings.Add(circles[i].gameObject);
+                    lit.Add(circles[i].gameObject.activeSelf);
+                }
+            }
+
             _wanted = npc;
             try { _switch.Invoke(null, null); }
-            finally { _wanted = null; }
+            finally
+            {
+                _wanted = null;
+                for (int i = 0; i < rings.Count; i++)
+                    if (rings[i] != null && rings[i].activeSelf != lit[i]) rings[i].SetActive(lit[i]);
+            }
         }
 
         internal static void TryApply()

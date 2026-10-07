@@ -40,13 +40,14 @@ namespace SVS_FreeRoam
         // What the game's standing spots offer, for maps whose spots cannot be read.
         private static readonly int[] DefaultStanding = { 0, 13, 15, 24, 26, 29, 31, 34 };
 
-        private enum Press { None, Self, Character, ThirdPerson, Gamepad }
+        private enum Press { None, Self, Character, ThirdPerson, Gamepad, GamepadSpent }
 
         private static Press _press;
         private static Vector3 _pressAt;
         private static float _pressTime;
         private static SV.Chara.AI _pressCharacter;
         private static int _thirdPersonFrame;
+        private static IntPtr _player;                 // whose state all this is
         // The wheel is staying up after the button was let go; a click chooses.
         private static bool _sticky;
         private static bool _stickyThirdPerson;
@@ -177,7 +178,62 @@ namespace SVS_FreeRoam
                                 $"hold for the wheel and press {ActiveCollection} on an animation.", 6f);
                     break;
             }
-            return Fitting(playerAI);
+            // Fitting. Standing next to a seat, what that seat offers comes first: choosing one
+            // sits the player there. (A tap never plays those standing: see Tap.)
+            var fitting = Fitting(playerAI);
+            if (CurrentSeat(playerAI) != null) return fitting;
+            var spot = NearbySpot(playerAI, out int job, ChoiceReach);
+            if (spot == null) return fitting;
+
+            var ids = new List<int>();
+            var offer = _nearbyTable != 0 ? Detail(spot, _nearbyTable, job) : UrouroDetail(spot, job);
+            if (offer?.animations != null)
+                for (int k = 0; k < offer.animations.Count; k++)
+                    if (!ids.Contains(offer.animations[k].animMotion)) ids.Add(offer.animations[k].animMotion);
+            foreach (int id in fitting) if (!ids.Contains(id)) ids.Add(id);
+            return ids;
+        }
+
+        /// <summary>What a wander point offers for one activity.</summary>
+        private static MovePointInfo.JobDetail UrouroDetail(MovePointInfo point, int job)
+        {
+            var details = point.urouroDetails;
+            if (details == null) return null;
+            for (int i = 0; i < details.Count; i++)
+                if (details[i]?.animations != null && (int)details[i].job == job) return details[i];
+            return null;
+        }
+
+        // A spot told to offer one animation only, so that the game, putting the player there,
+        // starts the one chosen from the wheel and not one of its own choosing first.
+        private static MovePointInfo.JobDetail _forcedDetail;
+        private static Il2CppSystem.Collections.Generic.List<MovePointInfo.AnimationInfo> _forcedOffer;
+
+        private static void Force(MovePointInfo spot, int job, int id)
+        {
+            Unforce();
+            var detail = UrouroDetail(spot, job);
+            if (detail == null) return;
+
+            // The spot's own entry for it, if it has one; else one like the others.
+            MovePointInfo.AnimationInfo entry = null;
+            for (int k = 0; k < detail.animations.Count; k++)
+                if (detail.animations[k].animMotion == id) entry = detail.animations[k];
+            entry ??= new MovePointInfo.AnimationInfo { weight = 1, animMotion = id, isAddH = false };
+
+            var only = new Il2CppSystem.Collections.Generic.List<MovePointInfo.AnimationInfo>();
+            only.Add(entry);
+            _forcedDetail = detail;
+            _forcedOffer = detail.animations;
+            detail.animations = only;
+        }
+
+        /// <summary>The spot offers what it always did again.</summary>
+        private static void Unforce()
+        {
+            if (_forcedDetail != null) _forcedDetail.animations = _forcedOffer;
+            _forcedDetail = null;
+            _forcedOffer = null;
         }
 
         /// <summary>A spot's offer for one activity includes sitting.</summary>
@@ -454,6 +510,15 @@ namespace SVS_FreeRoam
                 }
             }
             if (!played) playerAI.SetLowpolyAnimation(id, false, true, 0.25f, true);
+            Playing(playerAI, id);
+        }
+
+        /// <summary>
+        /// An animation of ours is under way, started here or by the game on our say: its
+        /// sound, the hold on the seat, and what a tap will stop.
+        /// </summary>
+        private static void Playing(SV.Chara.AI playerAI, int id)
+        {
             if (Plugin.AnimationProps.Value) StartVoice(playerAI, id);
             else StopVoice();
 
@@ -549,22 +614,15 @@ namespace SVS_FreeRoam
             return marks;
         }
 
-        /// <summary>The animation's name, starred with the numbers of the collections it is in.</summary>
+        /// <summary>
+        /// The animation's name. A favorite is starred with the numbers of the collections it
+        /// is in and written in their colour throughout, pointed at or not.
+        /// </summary>
         private static string WheelLabel(int id, List<int>[] collections)
         {
             var marks = FavoriteMarks(id, collections, out string colour);
             return marks.Count == 0 ? Name(id)
-                 : $"<color={colour}>\u2605 {string.Join(", ", marks)}</color>  {Name(id)}";
-        }
-
-        /// <summary>The colour a favorite's name takes while pointed at; clear for the usual one.</summary>
-        private static Color WheelHighlight(int id, List<int>[] collections)
-        {
-            FavoriteMarks(id, collections, out string colour);
-            if (colour == null) return Color.clear;
-            return new Color(Convert.ToInt32(colour.Substring(1, 2), 16) / 255f,
-                             Convert.ToInt32(colour.Substring(3, 2), 16) / 255f,
-                             Convert.ToInt32(colour.Substring(5, 2), 16) / 255f, 1f);
+                 : $"<color={colour}>\u2605 {string.Join(", ", marks)}  {Name(id)}</color>";
         }
 
         /// <summary>
@@ -622,13 +680,23 @@ namespace SVS_FreeRoam
         {
             if (playerAI == null) return;
             _pendingId = -1;
+            Unforce();
             if (CurrentSeat(playerAI) == null)
             {
                 // Asked for outright, so the reach is wider than a tap's.
                 var spot = NearbyOffering(playerAI, id, ChoiceReach, out int job);
                 if (spot == null && NeedsSeat(id)) spot = NearbySpot(playerAI, out job, ChoiceReach);
+                if (spot != null && _nearbyTable != 0)
+                {
+                    // An activity's seat, where we sit the player by hand: in this animation.
+                    UseBorrowed(playerAI, spot, _nearbyTable, job, id);
+                    return;
+                }
                 if (spot != null)
                 {
+                    // The game seats the player and starts one of the animations the spot
+                    // offers: for the moment, it offers this one alone.
+                    Force(spot, job, id);
                     UseSpot(playerAI, spot, job);
                     _pendingId = id;
                     _pendingReadySince = -1f;
@@ -769,6 +837,11 @@ namespace SVS_FreeRoam
                 {
                     var own = new List<int>();
                     AddAnimations(_usedSpot, own);
+                    // Should the game not go by the narrowed offer after all, it will be in
+                    // one of the spot's usual ones: settled all the same.
+                    if (_forcedOffer != null)
+                        for (int k = 0; k < _forcedOffer.Count; k++)
+                            if (!own.Contains(_forcedOffer[k].animMotion)) own.Add(_forcedOffer[k].animMotion);
                     foreach (int id in own)
                         if (manager.IsPlayMotion(playerAI.BehaviourCtrl, id)) { ready = true; break; }
                 }
@@ -780,6 +853,7 @@ namespace SVS_FreeRoam
                 if (Time.unscaledTime <= _pendingDeadline) return;
                 Notice.Log($"Idle: the game did not settle the player on the spot in time, so {Name(_pendingId)} was not played.");
                 _pendingId = -1;
+                Unforce();
                 return;
             }
             if (_pendingReadySince < 0f) _pendingReadySince = Time.unscaledTime;
@@ -787,8 +861,15 @@ namespace SVS_FreeRoam
 
             int chosen = _pendingId;
             _pendingId = -1;
-            // Unless the game happened to choose the same one.
-            if (!manager.IsPlayMotion(playerAI.BehaviourCtrl, chosen)) Play(playerAI, chosen);
+            Unforce();
+            // The game started it itself, the spot offering nothing else; if it did not after
+            // all, it is played now.
+            if (manager.IsPlayMotion(playerAI.BehaviourCtrl, chosen))
+            {
+                Notice.Log($"Idle: settled in {chosen} ({Name(chosen)}).");
+                Playing(playerAI, chosen);
+            }
+            else Play(playerAI, chosen);
         }
 
         /// <summary>A click on an activity's seat: walk to the floor beside it, then sit by hand.</summary>
@@ -845,35 +926,94 @@ namespace SVS_FreeRoam
             }
 
             if (_leftSeat != IntPtr.Zero && TargetOf(playerAI) != _leftSeat) _leftSeat = IntPtr.Zero;
-            if (!byHand) return;
 
             // Walked off a seat by hand. When the game walks a character off a seat it also
             // puts their ring back under them; here nothing would, and the ring trailed along
             // beside the player until the game next walked them.
-            var seat = CurrentSeat(playerAI);
-            if (seat == null) return;
-            _leftSeat = seat.Pointer;
-            _pendingId = -1;
-            Notice.Log("Idle: walked off the seat by hand.");
-            try { playerAI.RestoreObjectsPosition(); }
-            catch (Exception e) { Notice.Log("Idle: could not put the ring back (" + e.Message + ")."); }
+            var seat = byHand ? CurrentSeat(playerAI) : null;
+            if (seat != null)
+            {
+                _leftSeat = seat.Pointer;
+                _pendingId = -1;
+                Notice.Log("Idle: walked off the seat by hand.");
+                try { playerAI.RestoreObjectsPosition(); }
+                catch (Exception e) { Notice.Log("Idle: could not put the ring back (" + e.Message + ")."); }
+            }
+
+            if (_pendingId < 0 && _forcedDetail != null) Unforce();
+            RingUpkeep(playerAI);
+        }
+
+        // The player's ring and its particle rings, and where each sits under the player when
+        // the game does not have them on a seat.
+        private static IntPtr _ringOf;
+        private static readonly List<Transform> _ringParts = new List<Transform>();
+        private static readonly List<Vector3> _ringHome = new List<Vector3>();
+
+        private static bool HasPlaceOfItsOwn(MovePointInfo point)
+        {
+            var details = point.urouroDetails;
+            if (details == null) return false;
+            for (int i = 0; i < details.Count; i++)
+                if (details[i]?.charactorOffset != null) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// The game's own putting-back of the ring (above) did not always take: the game still
+        /// has the player down as seated and, it seems, moves the ring again later. So for as
+        /// long as that lasts (until the game gives the player a new target) the ring is kept
+        /// where it sits when nothing has moved it.
+        /// </summary>
+        private static void RingUpkeep(SV.Chara.AI playerAI)
+        {
+            // Third person borrows the ring as its marker and looks after it itself.
+            if (ThirdPersonController.IsPovRunning) return;
+            var ring = playerAI.objCircle;
+            if (ring == null) return;
+
+            if (ring.Pointer != _ringOf)
+            {
+                // Learnt only where the game cannot have moved it: not on or just off a seat,
+                // nor at any spot with a place of its own.
+                if (_leftSeat != IntPtr.Zero || _held || _borrowed != null || ThirdPersonController.Handling) return;
+                var point = playerAI.BehaviourCtrl?.target?.pInfo;
+                if (point != null && !Walker.IsOurTarget(playerAI.BehaviourCtrl) && HasPlaceOfItsOwn(point)) return;
+
+                _ringOf = ring.Pointer;
+                _ringParts.Clear();
+                _ringHome.Clear();
+                _ringParts.Add(ring.transform);
+                var particles = playerAI.particleCircles;
+                if (particles != null)
+                    for (int i = 0; i < particles.Count; i++)
+                        if (particles[i] != null) _ringParts.Add(particles[i].transform);
+                foreach (var part in _ringParts) _ringHome.Add(part.localPosition);
+                return;
+            }
+
+            if (_leftSeat == IntPtr.Zero) return;
+            for (int i = 0; i < _ringParts.Count; i++)
+            {
+                var part = _ringParts[i];
+                if (part != null && (part.localPosition - _ringHome[i]).sqrMagnitude > 0.000001f)
+                    part.localPosition = _ringHome[i];
+            }
         }
 
         private static void OpenAnimationWheel(List<int> ids, Vector2 centre, bool virtualPointer)
         {
             var collections = Collections();
             var labels = new List<string>();
-            var highlights = new List<Color>();
             _actions = new List<Action>();
             _wheelIds = ids;
             foreach (int id in ids)
             {
                 int chosen = id;
                 labels.Add(WheelLabel(id, collections));
-                highlights.Add(WheelHighlight(id, collections));
                 _actions.Add(() => PlayChoice(GameChara.PlayerAI, chosen));
             }
-            IdleWheel.Open(labels, centre, virtualPointer, highlights);
+            IdleWheel.Open(labels, centre, virtualPointer);
         }
 
         private static void OpenCharacterWheel(SimulationScene scene, SV.Chara.AI npc, Vector2 centre)
@@ -915,8 +1055,7 @@ namespace SVS_FreeRoam
             {
                 int id = _wheelIds[highlighted.Value];
                 ToggleFavorite(id, collection);
-                var collections = Collections();
-                IdleWheel.SetLabel(highlighted.Value, WheelLabel(id, collections), WheelHighlight(id, collections));
+                IdleWheel.SetLabel(highlighted.Value, WheelLabel(id, Collections()));
             }
 
             if (!Input.GetMouseButtonDown(0)) return false;
@@ -966,6 +1105,23 @@ namespace SVS_FreeRoam
         /// </summary>
         internal static void Update(SimulationScene scene, SV.Chara.AI playerAI)
         {
+            if (playerAI.Pointer != _player)
+            {
+                // Another character is the player now (switched to): the seat, the animation
+                // and the follow all belonged to the old one.
+                _player = playerAI.Pointer;
+                Cancel();
+                Release();
+                Unforce();
+                StopVoice();
+                _pendingId = -1;
+                _walkingToBorrow = null;
+                _playing = -1;
+                _leftSeat = IntPtr.Zero;
+                _usedSpot = null;
+                Follower.Stop("the player changed");
+            }
+
             if (Notice.On) ListMapAnimations(playerAI);
             Voice(playerAI);
             SeatUpkeep(playerAI);
@@ -1060,44 +1216,60 @@ namespace SVS_FreeRoam
 
         // ------------------------------------------------------------------ gamepad
 
+        // A stick that pointed at a choice is still tilted when the wheel closes. Until it has
+        // been let go it must not walk the player or swing the camera.
+        private static bool _sticksLatched;
+
         /// <summary>The wheel is up and steered with the controller: the sticks are choosing.</summary>
         internal static bool PadWheelOpen => _press == Press.Gamepad && IdleWheel.IsOpen;
 
+        /// <summary>The sticks are the wheel's, or were a moment ago and have not been let go.</summary>
+        internal static bool PadSticksBusy => PadWheelOpen || _sticksLatched;
+
+        private static bool SticksAtRest() =>
+            new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).magnitude < 0.25f &&
+            Gamepad.RightStick.magnitude < 0.25f;
+
         /// <summary>
         /// The controller's idle button, in either view. A tap does what the idle key does in
-        /// third person (sit, get up, play, stop); held, the wheel is up for as long as it is
-        /// held, a stick points at an animation and Select plays it. True while the button has
-        /// the say.
+        /// third person (sit, get up, play, stop). Held, the wheel is up: a stick points at an
+        /// animation, and Select, or letting the button go, plays it. True while the button
+        /// has the say.
         /// </summary>
         private static bool GamepadIdle(SV.Chara.AI playerAI)
         {
             if (!Plugin.GamepadSupport.Value)
             {
-                if (_press == Press.Gamepad) Cancel();
+                _sticksLatched = false;
+                if (_press == Press.Gamepad || _press == Press.GamepadSpent) Cancel();
                 return false;
+            }
+            if (_sticksLatched && SticksAtRest()) _sticksLatched = false;
+
+            // Chosen with Select while the button is still down: nothing more until it is let go.
+            if (_press == Press.GamepadSpent)
+            {
+                if (!Keys.Held(Plugin.GamepadIdleKey, Plugin.GamepadIdleKey2)) _press = Press.None;
+                return true;
             }
 
             if (_press == Press.Gamepad)
             {
                 if (Keys.Held(Plugin.GamepadIdleKey, Plugin.GamepadIdleKey2))
                 {
-                    if (!IdleWheel.IsOpen && Time.unscaledTime - _pressTime >= HoldTime)
+                    if (IdleWheel.IsOpen) PadWheel();
+                    else if (Time.unscaledTime - _pressTime >= HoldTime)
                     {
                         OpenAnimationWheel(WheelAnimations(playerAI),
                                            new Vector2(Screen.width, Screen.height) * 0.5f, false);
                         IdleWheel.PadMode = true;
                     }
-                    if (IdleWheel.IsOpen) PadWheel();
                     return true;
                 }
 
-                // Let go: the wheel just closes; without it, that was a tap.
+                // Let go: with the wheel up, whatever a stick points at; without it, a tap.
                 _press = Press.None;
-                if (IdleWheel.IsOpen)
-                {
-                    IdleWheel.Close();
-                    WheelClosedFrame = Time.frameCount;
-                }
+                if (IdleWheel.IsOpen) ClosePadWheel();
                 else TapThirdPerson(playerAI);
                 return true;
             }
@@ -1115,7 +1287,7 @@ namespace SVS_FreeRoam
         private static void PadWheel()
         {
             // Whichever stick is tilted further points at a choice. (The left one walks at
-            // other times; ThirdPersonController leaves it alone while the wheel is up.)
+            // other times; ThirdPersonController leaves it alone while the wheel has it.)
             var left = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
             var right = Gamepad.RightStick;
             int page = Keys.Down(Plugin.GamepadNextScreenKey, Plugin.GamepadNextScreenKey2) ||
@@ -1125,11 +1297,16 @@ namespace SVS_FreeRoam
             IdleWheel.TickPad(right.magnitude > left.magnitude ? right : left, page);
 
             if (!Keys.Down(Plugin.GamepadSelectKey, Plugin.GamepadSelectKey2)) return;
-            var chosen = IdleWheel.Highlighted;
-            if (chosen == null || _actions == null || chosen.Value >= _actions.Count) return;
-            // The wheel stays up: another can be tried straight away.
-            try { _actions[chosen.Value](); }
-            catch (Exception e) { Plugin.Logger.LogWarning("Wheel choice failed: " + e.Message); }
+            if (IdleWheel.Highlighted == null) return;
+            ClosePadWheel();
+            _press = Press.GamepadSpent;
+        }
+
+        /// <summary>Closes the controller's wheel, playing whatever a stick points at.</summary>
+        private static void ClosePadWheel()
+        {
+            _sticksLatched = true;
+            CloseWheel();
         }
 
         // ------------------------------------------------------------------ click to walk
@@ -1273,7 +1450,9 @@ namespace SVS_FreeRoam
         /// Sits the player on an activity's seat by hand: onto the seat's own spot, facing its
         /// way, in the first animation the activity lists there.
         /// </summary>
-        private static void UseBorrowed(SV.Chara.AI playerAI, MovePointInfo spot, int table, int job)
+        /// <param name="play">The animation to sit in; the activity's first when not given.</param>
+        private static void UseBorrowed(SV.Chara.AI playerAI, MovePointInfo spot, int table, int job,
+                                        int play = -1)
         {
             var detail = Detail(spot, table, job);
             if (detail == null) return;
@@ -1294,9 +1473,9 @@ namespace SVS_FreeRoam
             _borrowed = spot;
             _borrowedAt = where.position;
             _borrowedIds = ids;
-            Play(playerAI, ids[0]);
+            Play(playerAI, play >= 0 ? play : ids[0]);
             // Nothing in the game keeps a character here outside the activity: we do.
-            Hold(playerAI, spot);
+            if (!_held) Hold(playerAI, spot);
         }
 
         /// <summary>
@@ -1331,7 +1510,7 @@ namespace SVS_FreeRoam
         {
             if (!Plugin.ClickIdle.Value) return;
             // The controller's idle button has the say (ClickIdler.Update looks after it).
-            if (_press == Press.Gamepad)
+            if (_press == Press.Gamepad || _press == Press.GamepadSpent)
             {
                 _thirdPersonFrame = Time.frameCount;
                 return;

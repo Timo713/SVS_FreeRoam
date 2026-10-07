@@ -34,7 +34,6 @@ namespace SVS_FreeRoam
         private static readonly Text[] _labels = new Text[MaxSlots];
 
         private static List<string> _items;
-        private static List<Color> _highlights;        // per choice; clear for the usual colour
         private static bool _pad;
         private static Vector2 _centrePos;
         private static Vector2 _pointer;
@@ -65,17 +64,13 @@ namespace SVS_FreeRoam
 
         private static float Scale => Screen.height / 1080f;
 
-        /// <param name="highlights">The colour each choice's text takes while pointed at; a
-        /// clear colour, or no list, for the usual one.</param>
-        internal static void Open(List<string> items, Vector2 centre, bool virtualPointer,
-                                  List<Color> highlights = null)
+        internal static void Open(List<string> items, Vector2 centre, bool virtualPointer)
         {
             if (items == null || items.Count == 0) return;
             _slots = Mathf.Clamp(Plugin.WheelSlots.Value, 2, MaxSlots);
             Ensure();
 
             _items = items;
-            _highlights = highlights;
             _pad = false;
             _virtual = virtualPointer;
             _sticky = false;
@@ -96,11 +91,10 @@ namespace SVS_FreeRoam
         }
 
         /// <summary>Changes the text of one choice while the wheel is open.</summary>
-        internal static void SetLabel(int index, string text, Color highlight)
+        internal static void SetLabel(int index, string text)
         {
             if (_items == null || index < 0 || index >= _items.Count) return;
             _items[index] = text;
-            if (_highlights != null && index < _highlights.Count) _highlights[index] = highlight;
             if (IsOpen && _root != null) Refresh();
         }
 
@@ -111,9 +105,6 @@ namespace SVS_FreeRoam
             set { _pad = value; if (IsOpen && _root != null) Refresh(); }
         }
 
-        private static Color HighlightOf(int index) =>
-            _highlights != null && index < _highlights.Count && _highlights[index].a > 0f
-                ? _highlights[index] : new Color(1f, 0.92f, 0.45f);
 
         /// <summary>Steered with the mouse: its position, or its movement in third person.</summary>
         internal static void Tick()
@@ -205,7 +196,8 @@ namespace SVS_FreeRoam
                 rt.sizeDelta = new Vector2(width, 60f);
                 _labels[i].fontSize = size;
                 _labels[i].text = _items[_page * _slots + i];
-                _labels[i].color = i == _slot ? HighlightOf(_page * _slots + i) : Color.white;
+                // (A label that carries its own colour, as favorites do, keeps it either way.)
+                _labels[i].color = i == _slot ? new Color(1f, 0.92f, 0.45f) : Color.white;
             }
 
             bool lit = _slot >= 0 && count > 0;
@@ -221,7 +213,7 @@ namespace SVS_FreeRoam
 
             string text = lit ? _items[_page * _slots + _slot]
                         : _pad ? "Tilt a stick" : _sticky ? "Click here to cancel" : "Release to cancel";
-            if (_pad && lit) text += "\n<size=15>A plays it</size>";
+            if (_pad && lit) text += "\n<size=15>A, or let go, plays it</size>";
             else if (_sticky && lit) text += "\n<size=15>click to choose</size>";
             if (Pages > 1)
                 text += $"\n<size=15>page {_page + 1} of {Pages}  -  {(_pad ? "RB or D-pad" : "scroll")}</size>";
