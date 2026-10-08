@@ -2234,3 +2234,14 @@ With Debug Info on the log says "Led: ..." when it starts and ends.
 Open: if the trip still stalls with "Led:" in the log, something other than our input is
 stopping it; if "Led:" never appears, the flags are set later than the walk begins and
 `BaseAction == Interpersonal` is the next thing to test.
+
+**Clicking away as a conversation loads (2026-10-08, fix UNTESTED).** Reproduced by the
+developer: with the cursor free, a ground click made just as the player reaches the
+character they clicked, while the conversation is loading, walks the player off and
+leaves that character standing stuck for a while. The walk to them is plain `Move` with
+a `Chara` target (`SimulationScene.SetTarget`) and may be called off; on arrival
+`SVMoveToDo` hands a task to `TalkManager.SetTask`, and from then on
+`TalkManager.IsCharaAI(playerAI)` is true. `Picker.WhyNotClickable` refuses clicks while
+it is, which covers click-walk, follow and idle clicks. Unknown: whether a task with the
+player in it can outlast the conversation (an "after" task); if clicks stay dead after a
+talk, the log says "a conversation with the player is starting" for each one.

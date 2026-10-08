@@ -15,6 +15,9 @@
 - Being walked somewhere with someone (an activity you were invited to, following
   them) could be broken by a click or a step, leaving the activity to start a minute
   late or not at all. The plugin now leaves you alone until that walk is over.
+- Clicking the ground just as a conversation was loading walked you off and left the
+  other character stuck for a while. Those clicks are ignored now; you can still
+  click elsewhere while you are on the way to them.
 
 **Seats and idle animations**
 - Sit on benches, chairs, the classroom's desks and the café's tables: click them, or in

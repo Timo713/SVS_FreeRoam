@@ -31,7 +31,20 @@ namespace SVS_FreeRoam
 
             if ((Scene.IsOverlap || ThirdPersonController.IsAnyMenuOpen())) return "a menu, conversation or H scene is open";
             if (ThirdPersonController.PlayerLed) return "the game is walking the player somewhere with someone";
+            if (TalkPending()) return "a conversation with the player is starting";
             return null;
+        }
+
+        /// <summary>
+        /// The player has reached whoever they were walking to and the game has set the talk up
+        /// (SVMoveToDo makes the task on arrival); its screen is still loading. Walking off now
+        /// leaves the other character standing there waiting (FINDINGS.md §32).
+        /// </summary>
+        private static bool TalkPending()
+        {
+            var talks = ILLGames.Unity.Component.Singleton<TalkManager>._instance;
+            var playerAI = SV.GameChara.PlayerAI;
+            return talks != null && playerAI != null && talks.IsCharaAI(playerAI);
         }
 
         /// <summary>
