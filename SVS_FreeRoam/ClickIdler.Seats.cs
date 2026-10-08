@@ -137,7 +137,6 @@ namespace SVS_FreeRoam
         internal static void NoteSpot(MovePointInfo spot, int job)
         {
             Release();
-            _leftSeat = IntPtr.Zero;
             _usedSpot = spot;
             _usedJob = job;
         }
@@ -258,7 +257,7 @@ namespace SVS_FreeRoam
 
             var bctrl = playerAI.BehaviourCtrl;
             var point = bctrl?.target?.pInfo;
-            return point != null && point.Pointer != _leftSeat && !Walker.IsOurTarget(bctrl) && IsSeat(point) &&
+            return point != null && !Walker.IsOurTarget(bctrl) && IsSeat(point) &&
                    Vector3.Distance(SeatPosition(point), playerAI.transform.position) < 1f
                 ? point : null;
         }
@@ -402,9 +401,6 @@ namespace SVS_FreeRoam
 
         private static bool _walkerPlaced, _walkerTurned;
 
-        // The seat the player walked off by hand. They may still be standing right at it,
-        // with it still the game's target for them: it is not where they sit any more.
-        private static IntPtr _leftSeat;
 
         private static IntPtr TargetOf(SV.Chara.AI playerAI)
         {
@@ -591,138 +587,25 @@ namespace SVS_FreeRoam
                 else Pin();
             }
 
-            if (_leftSeat != IntPtr.Zero && TargetOf(playerAI) != _leftSeat) _leftSeat = IntPtr.Zero;
-
-            // Walked off a seat by hand. When the game walks a character off a seat it also
-            // puts their ring back under them; here nothing would, and the ring trailed along
-            // beside the player until the game next walked them.
+            // Walked off a seat by hand. The game still has the seat as the player's target and
+            // sits them back on it, body and ring, the next time they stand still. The body is
+            // reset on every frame of hand movement (MovePlayer) and the ring is not, so the
+            // ring trailed beside the player from then on. So: off the seat the way the game
+            // does it at the start of a walk of its own, and a target of ours in its place.
             var seat = byHand ? CurrentSeat(playerAI) : null;
             if (seat != null)
             {
-                _leftSeat = seat.Pointer;
                 _pendingId = -1;
                 Notice.Log("Idle: walked off the seat by hand.");
-                if (Notice.On) Notice.Log("Idle:   before: " + RingFacts(playerAI));
                 try
                 {
-                    // What the game does at the start of every walk it makes (SetCharaMapMove):
-                    // the body back under the character, the seat's prop back, the ring and
-                    // the collider back in the middle, the walker's girth back.
                     if (!GameChara.RestoreOffset(playerAI.BehaviourCtrl, true)) playerAI.RestoreObjectsPosition();
+                    Walker.Retarget(playerAI);
                 }
                 catch (Exception e) { Notice.Log("Idle: could not take the player off the seat properly (" + e.Message + ")."); }
-                if (Notice.On)
-                {
-                    Notice.Log("Idle:   after:  " + RingFacts(playerAI));
-                    _ringCheckAt = Time.unscaledTime + 1.5f;
-                }
             }
 
             if (_pendingId < 0 && _forcedDetail != null) Unforce();
-            RingUpkeep(playerAI);
-
-            if (_ringCheckAt > 0f && Time.unscaledTime >= _ringCheckAt)
-            {
-                _ringCheckAt = -1f;
-                if (Notice.On) Notice.Log("Idle:   a moment later: " + RingFacts(playerAI));
-            }
-        }
-
-        private static float _ringCheckAt = -1f;
-
-        private static string Short(Vector3 v) => $"({v.x:0.00}, {v.y:0.00}, {v.z:0.00})";
-
-        /// <summary>
-        /// For the log: where the ring, its particle rings and the body sit under the player.
-        /// The ring still ends up off-centre at times after walking off a seat by hand, and
-        /// which of these is out of place then is not known.
-        /// </summary>
-        private static string RingFacts(SV.Chara.AI playerAI)
-        {
-            var sb = new StringBuilder();
-            try
-            {
-                var ring = playerAI.objCircle;
-                if (ring != null)
-                    sb.Append("ring under '").Append(ring.transform.parent != null ? ring.transform.parent.name : "nothing")
-                      .Append("' at ").Append(Short(ring.transform.localPosition));
-                var body = playerAI.chaCtrl?.transform;
-                if (body != null)
-                    sb.Append("; body under '").Append(body.parent != null ? body.parent.name : "nothing")
-                      .Append("' at ").Append(Short(body.localPosition)).Append(" turned ").Append(Short(body.localEulerAngles));
-                var particles = playerAI.particleCircles;
-                if (particles != null)
-                    for (int i = 0; i < particles.Count; i++)
-                    {
-                        if (particles[i] == null) continue;
-                        var t = particles[i].transform;
-                        sb.Append("; particles ").Append(i).Append(particles[i].gameObject.activeSelf ? " (lit)" : "")
-                          .Append(" under '").Append(t.parent != null ? t.parent.name : "nothing").Append("' at ")
-                          .Append(Short(t.localPosition)).Append(" space ").Append(particles[i].main.simulationSpace);
-                    }
-                sb.Append("; player at ").Append(Short(playerAI.transform.position));
-            }
-            catch (Exception e) { sb.Append(" (").Append(e.Message).Append(')'); }
-            return sb.ToString();
-        }
-
-        // The player's ring and its particle rings, and where each sits under the player when
-        // the game does not have them on a seat.
-        private static IntPtr _ringOf;
-
-        private static readonly List<Transform> _ringParts = new List<Transform>();
-
-        private static readonly List<Vector3> _ringHome = new List<Vector3>();
-
-        private static bool HasPlaceOfItsOwn(MovePointInfo point)
-        {
-            var details = point.urouroDetails;
-            if (details == null) return false;
-            for (int i = 0; i < details.Count; i++)
-                if (details[i]?.charactorOffset != null) return true;
-            return false;
-        }
-
-        /// <summary>
-        /// The game's own putting-back of the ring (above) did not always take: the game still
-        /// has the player down as seated and, it seems, moves the ring again later. So for as
-        /// long as that lasts (until the game gives the player a new target) the ring is kept
-        /// where it sits when nothing has moved it.
-        /// </summary>
-        private static void RingUpkeep(SV.Chara.AI playerAI)
-        {
-            // Third person borrows the ring as its marker and looks after it itself.
-            if (ThirdPersonController.IsPovRunning) return;
-            var ring = playerAI.objCircle;
-            if (ring == null) return;
-
-            if (ring.Pointer != _ringOf)
-            {
-                // Learnt only where the game cannot have moved it: not on or just off a seat,
-                // nor at any spot with a place of its own.
-                if (_leftSeat != IntPtr.Zero || _held || _borrowed != null || ThirdPersonController.Handling) return;
-                var point = playerAI.BehaviourCtrl?.target?.pInfo;
-                if (point != null && !Walker.IsOurTarget(playerAI.BehaviourCtrl) && HasPlaceOfItsOwn(point)) return;
-
-                _ringOf = ring.Pointer;
-                _ringParts.Clear();
-                _ringHome.Clear();
-                _ringParts.Add(ring.transform);
-                var particles = playerAI.particleCircles;
-                if (particles != null)
-                    for (int i = 0; i < particles.Count; i++)
-                        if (particles[i] != null) _ringParts.Add(particles[i].transform);
-                foreach (var part in _ringParts) _ringHome.Add(part.localPosition);
-                return;
-            }
-
-            if (_leftSeat == IntPtr.Zero) return;
-            for (int i = 0; i < _ringParts.Count; i++)
-            {
-                var part = _ringParts[i];
-                if (part != null && (part.localPosition - _ringHome[i]).sqrMagnitude > 0.000001f)
-                    part.localPosition = _ringHome[i];
-            }
         }
 
         /// <summary>

@@ -111,6 +111,20 @@ namespace SVS_FreeRoam
             _markerPoint.urouroDetails = details;
         }
 
+        /// <summary>
+        /// Makes our marker, put where the player stands, the player's target without starting
+        /// a walk: for when the game must stop thinking of the spot it last sent them to.
+        /// </summary>
+        internal static void Retarget(SV.Chara.AI playerAI)
+        {
+            var bctrl = playerAI.BehaviourCtrl;
+            if (bctrl?.target == null) return;
+            EnsureMarker();
+            Dress(null);
+            _marker.transform.position = playerAI.transform.position;
+            bctrl.target.SetMap(_markerPoint, bctrl.NowMapID, 0, -1);
+        }
+
         /// <summary>Moves the destination of a walk already under way, without restarting it.</summary>
         internal static void MoveMarker(Vector3 point)
         {

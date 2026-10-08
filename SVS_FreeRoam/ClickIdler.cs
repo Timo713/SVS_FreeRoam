@@ -172,6 +172,7 @@ namespace SVS_FreeRoam
                 _actions.Add(() => PlayChoice(GameChara.PlayerAI, chosen));
             }
             IdleWheel.Open(labels, centre, virtualPointer);
+            IdleWheel.Footer = "1, 2, 3 to favorite";
         }
 
         private static void OpenCharacterWheel(SimulationScene scene, SV.Chara.AI npc, Vector2 centre)
@@ -273,7 +274,6 @@ namespace SVS_FreeRoam
                 _pendingId = -1;
                 _walkingToBorrow = null;
                 _playing = -1;
-                _leftSeat = IntPtr.Zero;
                 _usedSpot = null;
                 Follower.Stop("the player changed");
             }

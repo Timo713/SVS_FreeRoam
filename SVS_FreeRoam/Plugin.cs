@@ -70,6 +70,13 @@ namespace SVS_FreeRoam
         On,
     }
 
+    /// <summary>Which easing Camera Smoothing uses.</summary>
+    public enum SmoothingFeel
+    {
+        Original,
+        AicomiGlide,
+    }
+
     /// <summary>Which part of the camera rig gets eased when smoothing is on.</summary>
     public enum SmoothingType
     {
@@ -298,6 +305,8 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<float> LookSensitivity;
         internal static ConfigEntry<float> CameraSmoothing;
         internal static ConfigEntry<SmoothingType> SmoothingMode;
+        internal static ConfigEntry<SmoothingFeel> SmoothingCurve;
+        internal static ConfigEntry<bool> PovOn2DMaps;
         internal static ConfigEntry<OverviewRestoreMode> OverviewRestore;
         internal static ConfigEntry<float> HideCharacterBelow;
         internal static ConfigEntry<bool> NoSmoothingWhenHidden;
@@ -388,7 +397,7 @@ namespace SVS_FreeRoam
                         "own fade.", 5));
 
             PovDepthOfFieldMode = Config.Bind(
-                "Camera", "Depth Of Field In Third Person", PovDepthOfField.FocusOnYourCharacter,
+                "Camera", "Depth Of Field In Third Person", PovDepthOfField.Off,
                 Ordered("Only matters with Depth Of Field switched on in the game's graphics " +
                         "settings. Focus On Your Character keeps you and whoever is near you sharp; " +
                         "Off switches the blur off while third person is on; Unchanged leaves the " +
@@ -885,6 +894,21 @@ namespace SVS_FreeRoam
                     "instant.\n\nCameraPosition - smooths everything; softer, but the camera lags " +
                     "behind.", null,
                     new ConfigurationManagerAttributes { Order = 35 }));
+
+            SmoothingCurve = Config.Bind(
+                "Camera", "Camera Smoothing Feel", SmoothingFeel.Original,
+                new ConfigDescription(
+                    "How Camera Smoothing eases. Original - this plugin's own.\n\nAicomi Glide - " +
+                    "the glide of AC_MainCameraExtension: the slider is how long the camera " +
+                    "takes to catch up, in seconds.", null,
+                    new ConfigurationManagerAttributes { Order = 34 }));
+
+            PovOn2DMaps = Config.Bind(
+                "Camera", "Third Person On 2D Maps", false,
+                new ConfigDescription(
+                    "Allow third person on the maps that are a flat picture. They were not made " +
+                    "for it: expect to walk on a backdrop.", null,
+                    new ConfigurationManagerAttributes { Order = 3 }));
 
             OverviewRestore = Config.Bind(
                 "Camera", "Overview Camera Restore", OverviewRestoreMode.On,

@@ -21,6 +21,73 @@ namespace SVS_FreeRoam
 
         private static float _pitch, _yaw;
         private static float _distance = 3f, _targetDistance = 3f;
+        // Dragging the camera with the right mouse button, as AC_MainCameraExtension does:
+        // held, the mouse moves the camera instead of turning it. Up and down raise it, left
+        // and right bring it in and out; with the left button held as well, up and down are in
+        // and out and left and right slide it sideways. A short click is still the button's
+        // own function (interact). Reset View puts it all back.
+        private const float TapTime = 0.25f;
+        private const float DragHeightSpeed = 0.03f, DragZoomSpeed = 0.15f, DragLimit = 1.5f;
+        private static float _rightDownAt = -1f;
+        private static bool _dragging, _dragInUse;
+        private static int _tapFrame = -1;
+        private static float _raise, _raiseWanted, _side, _sideWanted;
+
+        /// <summary>The right button is held and dragging the camera.</summary>
+        internal static bool Dragging => _dragging;
+
+        /// <summary>The right button is the drag button just now, so its own function waits for a short click.</summary>
+        internal static bool DragButtonInUse => _dragInUse;
+
+        /// <summary>The right button was clicked, not dragged, and let go this frame.</summary>
+        internal static bool RightTapped => _tapFrame == Time.frameCount;
+
+        /// <param name="active">Third person is driving and the cursor is locked.</param>
+        internal static void TrackDrag(bool active)
+        {
+            // Not where the right button is the one that walks forward.
+            _dragInUse = active && Plugin.Mode.Value != ForwardMode.RightClickForward && !ClickIdler.BlocksInput;
+            if (!_dragInUse)
+            {
+                _rightDownAt = -1f;
+                _dragging = false;
+                return;
+            }
+
+            if (Input.GetMouseButtonDown(1))
+            {
+                _rightDownAt = Time.unscaledTime;
+                _dragging = false;
+            }
+            if (_rightDownAt < 0f) return;
+
+            if (!Input.GetMouseButton(1))
+            {
+                if (!_dragging) _tapFrame = Time.frameCount;
+                _rightDownAt = -1f;
+                _dragging = false;
+                return;
+            }
+
+            if (!_dragging && Time.unscaledTime - _rightDownAt > TapTime) _dragging = true;
+            if (!_dragging) return;
+
+            float dx = Input.GetAxis("Mouse X"), dy = Input.GetAxis("Mouse Y");
+            float zoom;
+            if (Input.GetMouseButton(0))
+            {
+                zoom = dy;
+                _sideWanted = Mathf.Clamp(_sideWanted + dx * DragHeightSpeed, -DragLimit, DragLimit);
+            }
+            else
+            {
+                zoom = dx;
+                _raiseWanted = Mathf.Clamp(_raiseWanted + dy * DragHeightSpeed, -DragLimit, DragLimit);
+            }
+            _targetDistance = Mathf.Clamp(_targetDistance - zoom * DragZoomSpeed,
+                                          Plugin.MinZoom.Value, Plugin.MaxZoom.Value);
+        }
+
         private static float _distanceBefore;          // where the camera was when the first person key took it in
         private static float _fov = BaseFov, _targetFov = BaseFov;
         private static bool _started;
@@ -278,6 +345,7 @@ namespace SVS_FreeRoam
             {
                 _targetDistance = StartDistance;
                 _targetFov = BaseFov;
+                _raiseWanted = _sideWanted = 0f;
             }
 
             // One key between first person and wherever the camera was before, as in Aicomi.
@@ -300,8 +368,12 @@ namespace SVS_FreeRoam
             // The animation wheel is steered with the mouse; the view holds still meanwhile.
             if (applyInput && !IdleWheel.IsOpen)
             {
-                _yaw += Input.GetAxis("Mouse X") * sensitivity;
-                _pitch -= Input.GetAxis("Mouse Y") * sensitivity;
+                // (While the right button drags the camera the mouse is moving it, not turning it.)
+                if (!_dragging)
+                {
+                    _yaw += Input.GetAxis("Mouse X") * sensitivity;
+                    _pitch -= Input.GetAxis("Mouse Y") * sensitivity;
+                }
                 if (allowZoom) ApplyZoom(Input.GetAxis("Mouse ScrollWheel"));
 
                 // Degrees per second, unlike the mouse, which reports movement per frame.
@@ -334,14 +406,24 @@ namespace SVS_FreeRoam
             float smoothing = Mathf.Clamp01(Plugin.CameraSmoothing.Value);
             if (_hidingCharacter && Plugin.NoSmoothingWhenHidden.Value) smoothing = 0f;
 
-            float rate = Mathf.Lerp(30f, 1.5f, smoothing);
-            float step = smoothing > 0f ? 1f - Mathf.Exp(-rate * Time.deltaTime) : 1f;
+            // Both curves ease the same way (a fixed share of what is left, each moment); they
+            // differ in how the slider sets the pace. Ours runs from 30 a second down to 1.5;
+            // AC_MainCameraExtension's takes the slider as the time, in seconds, to cover
+            // about two thirds of the way, and keeps pace when the game is paused or stutters.
+            float step;
+            if (smoothing <= 0f) step = 1f;
+            else if (Plugin.SmoothingCurve.Value == SmoothingFeel.AicomiGlide)
+                step = 1f - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, 0.1f) / smoothing);
+            else step = 1f - Mathf.Exp(-Mathf.Lerp(30f, 1.5f, smoothing) * Time.deltaTime);
+
+            _raise = Mathf.Lerp(_raise, _raiseWanted, step);
+            _side = Mathf.Lerp(_side, _sideWanted, step);
 
             _distance = smoothing > 0f ? Mathf.Lerp(_distance, _targetDistance, step) : _targetDistance;
             _fov = smoothing > 0f ? Mathf.Lerp(_fov, _targetFov, step) : _targetFov;
 
             float height = IsCrouching() ? Plugin.CrouchHeight.Value : Plugin.CameraHeight.Value;
-            var lookTarget = playerAI.transform.position + Vector3.up * height;
+            var lookTarget = playerAI.transform.position + Vector3.up * (height + _raise);
 
             bool smoothPivot = smoothing > 0f && Plugin.SmoothingMode.Value == SmoothingType.FollowPivot;
             bool smoothCamera = smoothing > 0f && Plugin.SmoothingMode.Value == SmoothingType.CameraPosition;
@@ -356,6 +438,7 @@ namespace SVS_FreeRoam
 
             var pivot = smoothPivot ? _smoothedPivot : lookTarget;
             var rotation = Quaternion.Euler(_pitch, _yaw, 0f);
+            pivot += rotation * Vector3.right * _side;
             var desired = pivot + rotation * new Vector3(0f, 0f, -_distance);
 
             if (Plugin.CameraCollision.Value)

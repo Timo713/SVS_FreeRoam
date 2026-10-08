@@ -78,8 +78,10 @@ namespace SVS_FreeRoam
             MapInfoParam mapInfo = null;
             mapManager.MapListTable?.TryGetValue(mapId, out mapInfo);
 
-            bool flat = mapManager.Is2DMap(mapManager.MapID) ||
-                        (mapInfo != null && mapInfo.IsUseTimezone2D);
+            // (2D maps are a picture with no room to walk around in: third person only if asked for.)
+            bool flat = !Plugin.PovOn2DMaps.Value &&
+                        (mapManager.Is2DMap(mapManager.MapID) ||
+                         (mapInfo != null && mapInfo.IsUseTimezone2D));
 
             TrackMenuTrip(playerAI);
             ArrivalWalk(scene, playerAI, flat);
@@ -175,6 +177,7 @@ namespace SVS_FreeRoam
 
             // The controller splits interact in two: talk (X) reaches only characters, and
             // interact (Y) only doorways and activity spots. The keyboard's does either.
+            CameraRig.TrackDrag(!cursorFree);
             bool pad = Plugin.GamepadSupport.Value && !GamepadUI.Active;
             bool talkPad = pad && Keys.Down(Plugin.GamepadTalkKey, Plugin.GamepadTalkKey2);
             bool placePad = pad && Keys.Down(Plugin.GamepadInteractKey, Plugin.GamepadInteractKey2);
@@ -183,7 +186,7 @@ namespace SVS_FreeRoam
             // the two fighting over one click.
             bool followClick = cursorFree && Plugin.ClickFollow.Value &&
                                Keys.Down(Plugin.FollowButton, Plugin.FollowButton2);
-            bool interactKey = Keys.Down(Plugin.InteractKey, Plugin.InteractKey2) && !followClick;
+            bool interactKey = InteractPressed() && !followClick;
             // While the animation wheel is up the mouse is choosing from it.
             bool interactPressed = (interactKey || talkPad || placePad) && !ClickIdler.BlocksInput;
             var filter = interactKey || (talkPad && placePad) ? TargetFilter.Any
@@ -233,7 +236,8 @@ namespace SVS_FreeRoam
                 // walking. Leaving hold-to-walk live meant that clicking a travel button was
                 // read as one frame of "forward", which drove the player by hand and then
                 // stopped -- cancelling the walk the button had just started.
-                MovePlayer(cam, playerAI, allowMouseForward: !cursorFree && !ClickIdler.BlocksInput);
+                MovePlayer(cam, playerAI, allowMouseForward: !cursorFree && !ClickIdler.BlocksInput &&
+                                                             !CameraRig.Dragging);
                 SteadyMarker(playerAI);
             }
             else if (_handling)
@@ -272,6 +276,18 @@ namespace SVS_FreeRoam
         private static bool _menuTrip;
         private static float _menuTripSince, _menuTripStill;
         private static Vector3 _menuTripLastPosition;
+
+        /// <summary>
+        /// The interact key going down. The right mouse button is also held to drag the camera
+        /// in third person, so there it counts as a short click, on release.
+        /// </summary>
+        private static bool InteractPressed()
+        {
+            static bool Pressed(KeyCode key) =>
+                key != KeyCode.None &&
+                (key == KeyCode.Mouse1 && CameraRig.DragButtonInUse ? CameraRig.RightTapped : Input.GetKeyDown(key));
+            return Pressed(Plugin.InteractKey.Value) || Pressed(Plugin.InteractKey2.Value);
+        }
 
         private static void TrackMenuTrip(SV.Chara.AI playerAI)
         {

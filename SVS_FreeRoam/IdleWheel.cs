@@ -30,6 +30,7 @@ namespace SVS_FreeRoam
         private static RectTransform _wheel;
         private static Image _highlight;
         private static Text _centre;
+        private static Text _footer;
         private static Font _font;
         private static readonly Text[] _labels = new Text[MaxSlots];
 
@@ -72,6 +73,7 @@ namespace SVS_FreeRoam
 
             _items = items;
             _pad = false;
+            _footerText = null;
             _virtual = virtualPointer;
             _sticky = false;
             _pointer = Vector2.zero;
@@ -96,6 +98,14 @@ namespace SVS_FreeRoam
             if (_items == null || index < 0 || index >= _items.Count) return;
             _items[index] = text;
             if (IsOpen && _root != null) Refresh();
+        }
+
+        private static string _footerText;
+
+        /// <summary>A line of small print under the wheel. Cleared by Open.</summary>
+        internal static string Footer
+        {
+            set { _footerText = value; if (IsOpen && _root != null) Refresh(); }
         }
 
         /// <summary>Steered with a controller: the texts in the middle say so.</summary>
@@ -218,6 +228,7 @@ namespace SVS_FreeRoam
             if (Pages > 1)
                 text += $"\n<size=15>page {_page + 1} of {Pages}  -  {(_pad ? "RB or D-pad" : "scroll")}</size>";
             _centre.text = text;
+            _footer.text = _footerText ?? "";
         }
 
         // ------------------------------------------------------------------ building
@@ -257,6 +268,9 @@ namespace SVS_FreeRoam
             for (int i = 0; i < MaxSlots; i++) _labels[i] = NewText("Label", 20, new Vector2(150f, 60f));
             _centre = NewText("Centre", 19, new Vector2(DiscRadius * Hole * 2f - 14f, 80f));
             _centre.supportRichText = true;
+            _footer = NewText("Footer", 16, new Vector2(DiscRadius * 2f, 30f));
+            _footer.rectTransform.anchoredPosition = new Vector2(0f, -DiscRadius - 22f);
+            _footer.color = new Color(1f, 1f, 1f, 0.75f);
         }
 
         private static Image NewImage(string name)

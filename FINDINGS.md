@@ -2058,9 +2058,12 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   CONFIRMED for the cafe. The pin (after `SimulationScene.Update` and after
   `AIBase.FixedUpdate`) alone did not hold; the walker flags did. LIKELY the pin is now
   dead weight: remove it once a round without it is confirmed.
-- **Leaving a seat by hand** (`ThirdPersonController.Handling`): `GameChara.RestoreOffset`
-  is called at that moment (round 13, UNVERIFIED), and the seat is remembered as left
-  (`_leftSeat`) so that standing next to it no longer counts as sitting on it.
+- **Leaving a seat by hand** (`ThirdPersonController.Handling`): `GameChara.RestoreOffset`,
+  then `Walker.Retarget` makes our marker the player's target (`bctrl.target.SetMap`).
+  Why: the log showed ring and body both back at the seat's offset about a second after
+  walking off. The game still had the seat as the target and **re-seated the player when
+  they stood still**; hand movement resets the body every frame (`MovePlayer`) but not
+  the ring, which then trailed beside the player. UNVERIFIED (round 14).
 - **Someone else's seat**: a point another character is at (1.5 m) or walking to is
   skipped (`Taken`). UNVERIFIED.
 - **Animation sets** (`Animation Set`): Fitting (standing: what standing spots offer with
@@ -2109,18 +2112,12 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   source to volume 1 (silent: the game writes 0 back).
 - Holding a hand-seated player by resetting the transform each frame: the walker writes
   it after us.
-- Ring after walking off a seat by hand: `Base.RestoreObjectsPosition()` alone (centred
-  only sometimes: the first time in a direction, not when leaving the same way again).
+- Ring after walking off a seat by hand: `Base.RestoreObjectsPosition()` alone, then
+  `GameChara.RestoreOffset` alone, then forcing the ring's local position while the seat
+  was still the target: each only undid the offset once; the game applied it again.
 
 ### Open
 
-- **The ring off-centre after walking off a seat by hand** (overview): cause not found.
-  `RestoreObjectsPosition` resets the ring to local zero, so something else is out of
-  place afterwards. Round 13 uses `GameChara.RestoreOffset` and, with Debug Info on, logs
-  where the ring, the particle rings and the body sit before, after and 1.5 s later
-  ("Idle:   before / after / a moment later"). `RingUpkeep` (round 12, never tested on
-  its own) also forces the ring's learnt local position while the left seat is still the
-  game's target. Whichever of the two turns out not to be needed must go.
 - Former player sometimes left standing with a ring after a switch: not explained;
   does it happen with the other plugin's own button?
 - Favorites cannot be starred from the gamepad.
@@ -2161,3 +2158,20 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
 - `Failures.Report` logs a repeating per-frame error once and then counts it (that log was
   1 MB of the same four lines).
 - That install also still had SVS_3rdPov 0.0.5; it was switched off as intended.
+
+## 31. Camera drag, glide and 2D maps (2026-10-07)
+
+- **Right-button drag in third person** (`CameraRig.TrackDrag`), after
+  AC_MainCameraExtension: held longer than 0.25 s, the mouse moves the camera instead of
+  turning it. Alone: up/down height, left/right distance. With the left button too:
+  up/down distance, left/right sideways. Speeds are that plugin's (0.03 and 0.15 per
+  mouse unit), limits 1.5 m, eased with the camera's smoothing, cleared by Reset View.
+  Because of it the right button's own function (interact) fires on a short click, on
+  release, while third person has the cursor locked (`InteractPressed`). Off when Forward
+  Mode is RightClickForward. UNVERIFIED.
+- **Camera Smoothing Feel**: both plugins ease exponentially; only the slider's meaning
+  differs. Original: rate from 30/s down to 1.5/s, game time. Aicomi Glide:
+  `1 - exp(-min(unscaled dt, 0.1) / slider)`, the slider a time in seconds.
+- **Third Person On 2D Maps** (off): skips the `Is2DMap` / `IsUseTimezone2D` test that
+  keeps third person off those maps. Nothing else was adapted for them. UNVERIFIED.
+- Depth Of Field In Third Person now defaults to Off.
