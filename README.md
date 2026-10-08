@@ -16,6 +16,8 @@ the rest below. See [CREDITS.md](CREDITS.md).
 | Sitting on a bench at the station with someone | Walking around in third person |
 | ![Aiming at a character](docs/screenshots/aimed-character.jpg) | ![Force High Poly Characters](docs/screenshots/high-poly.jpg) |
 | Aiming at someone shows who they are | Force High Poly Characters on the map |
+| ![The animation wheel](docs/screenshots/animation-wheel.jpg) | ![Studying at a classroom desk](docs/screenshots/study-desk.jpg) |
+| The animation wheel: hold, point, let go | Click a desk, chair or bench to use it |
 
 ## Requirements
 
