@@ -381,19 +381,12 @@ namespace SVS_FreeRoam
         // that for the seats it uses itself, as long as the animation is one of the seat's
         // own; it does not for an activity's seat we sat the player on by hand, nor once
         // something else is played (a meal at any of the cafe's tables). From then until the
-        // player leaves, the walker is told not to place the player, and the player is put
-        // back where they sat should anything else move them.
+        // player leaves, the walker is told not to place the player.
         private static bool _held;
-
-        private static bool _heldLogged;
 
         private static MovePointInfo _heldSeat;
 
         private static SV.Chara.AI _heldPlayer;
-
-        private static Vector3 _heldAt;
-
-        private static Quaternion _heldRotation;
 
         private static IntPtr _heldTarget;
 
@@ -414,11 +407,8 @@ namespace SVS_FreeRoam
         {
             var bctrl = playerAI.BehaviourCtrl;
             _held = true;
-            _heldLogged = false;
             _heldSeat = seat;
             _heldPlayer = playerAI;
-            _heldAt = playerAI.transform.position;
-            _heldRotation = playerAI.transform.rotation;
             _heldTarget = TargetOf(playerAI);
             _heldMap = bctrl != null ? bctrl.NowMapID : -1;
             _heldWalker = bctrl?.SVRichAI;
@@ -450,29 +440,6 @@ namespace SVS_FreeRoam
             _heldPlayer = null;
             _heldWalker = null;
             _borrowed = null;
-        }
-
-        private static void Pin()
-        {
-            var player = _heldPlayer;
-            if (player == null) { Release(); return; }
-            StillWalker();
-
-            var t = player.transform;
-            float moved = Vector3.Distance(t.position, _heldAt);
-            if (moved < 0.01f && Quaternion.Angle(t.rotation, _heldRotation) < 1f) return;
-            if (!_heldLogged && moved >= 0.01f)
-            {
-                _heldLogged = true;
-                Notice.Log($"Idle: the game moved the seated player {moved:0.00} m (to {t.position}); keeping them on the seat.");
-            }
-            t.SetPositionAndRotation(_heldAt, _heldRotation);
-        }
-
-        /// <summary>After the game's movement step for a character: the held player goes back.</summary>
-        internal static void FixedUpdate(Pathfinding.AIBase ai)
-        {
-            if (_held && _heldWalker != null && ai.Pointer == _heldWalker.Pointer) Pin();
         }
 
         /// <summary>Whether the player is sitting on this very seat.</summary>
@@ -585,8 +552,8 @@ namespace SVS_FreeRoam
                 bool leaving = byHand || bctrl == null || bctrl.NowMapID != _heldMap ||
                                TargetOf(playerAI) != _heldTarget || Walker.IsWalking(bctrl) ||
                                ThirdPersonController.InConversation() || ThirdPersonController.InH();
-                if (leaving) Release();
-                else Pin();
+                if (leaving || _heldPlayer == null) Release();
+                else StillWalker();
             }
 
             // Walked off a seat by hand. The game still has the seat as the player's target and

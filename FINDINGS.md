@@ -2051,13 +2051,12 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   reach): the game only uses them during the activity, so the player is sat by hand, the
   AI transform itself moved to `charactorOffset` (`UseBorrowed`), and held there.
   A click walks to the floor beside one first (`WalkToBorrowed`). CONFIRMED.
-- **The hold** (`Hold` / `Pin` / `Release`): from the first animation that is not the
-  seat's plain pose (and at once on an activity seat) until the player leaves, the
-  walker's `updatePosition` / `updateRotation` are off and the player is put back if moved.
-  Released by hand movement, a walk, a new target, another map, a conversation.
-  CONFIRMED for the cafe. The pin (after `SimulationScene.Update` and after
-  `AIBase.FixedUpdate`) alone did not hold; the walker flags did. LIKELY the pin is now
-  dead weight: remove it once a round without it is confirmed.
+- **The hold** (`Hold` / `Release`): from the first animation that is not the seat's plain
+  pose (and at once on an activity seat) until the player leaves, the walker's
+  `updatePosition` / `updateRotation` are off. Released by hand movement, a walk, a new
+  target, another map, a conversation. CONFIRMED for the cafe (with a per-frame pin as
+  well, removed in round 16 as the attempt that had not held on its own: if seats slip
+  again, that is the first suspect).
 - **Leaving a seat by hand** (`ThirdPersonController.Handling`): `GameChara.RestoreOffset`,
   then `Walker.Retarget` makes our marker the player's target (`bctrl.target.SetMap`).
   Why: the log showed ring and body both back at the seat's offset about a second after
@@ -2066,7 +2065,7 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   the ring, which then trailed beside the player. Round 14: rarer, not gone. Round 15:
   the remaining cases were walk-offs never noticed, because `CurrentSeat` measured the
   player's distance to the seat (under 1 m) while the character stands at the point,
-  0.9 to 1.2 m from its seat; it takes the nearer of the two now. UNVERIFIED.
+  0.9 to 1.2 m from its seat; it takes the nearer of the two now. CONFIRMED (no drift since).
 - **Someone else's seat**: a point another character is at (1.5 m) or walking to is
   skipped (`Taken`). UNVERIFIED.
 - **Animation sets** (`Animation Set`): Fitting (standing: what standing spots offer with
@@ -2165,15 +2164,18 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
 ## 31. Camera drag, glide and 2D maps (2026-10-07)
 
 - **Right-button drag in third person** (`CameraRig.TrackDrag`), after
-  AC_MainCameraExtension: held longer than 0.25 s, the mouse moves the camera instead of
-  turning it (looking stops as soon as the button is down). Alone: up/down height,
-  right pulls back and left brings in. With the left button too: up is forward,
-  left/right sideways. In first person the drag works the lens instead (left or down
-  zooms in). One speed, 0.06 per mouse unit; limits 1.5 m; eased with the camera's
-  smoothing; cleared by Reset View and by the first person key.
-  Because of it the right button's own function (interact) fires on a short click, on
-  release, while third person has the cursor locked (`InteractPressed`). Off when Forward
-  Mode is RightClickForward. UNVERIFIED.
+  AC_MainCameraExtension: while the right button is down the mouse moves the camera
+  instead of turning it, from the press on. Alone: up/down height, right pulls back and
+  left brings in. With the left button too: up is forward, left/right sideways. In first
+  person the drag works the lens (left or down zooms in), and once the lens is fully
+  wide, dragging on pulls the camera back out into third person. One speed, 0.06 per
+  mouse unit; limits 1.5 m; eased with the camera's smoothing; cleared by Reset View and
+  by the first person key. The button's own function (interact) is a **tap**: let go
+  within 0.3 s having moved the mouse no more than 0.6 units (`InteractPressed`). The
+  left button does not walk forward while the right is down, nor after the right is let
+  go first until it is let go too, nor in its first 0.1 s (`MouseForwardHeldBack`). Off
+  when Forward Mode is RightClickForward. A fixed 0.25 s hold before the drag began
+  (rounds 14-15) felt laggy and let a step through.
 - **Camera Smoothing Feel**: both plugins ease exponentially; only the slider's meaning
   differs. Original: rate from 30/s down to 1.5/s, game time. Aicomi Glide:
   `1 - exp(-min(unscaled dt, 0.1) / slider)`, the slider a time in seconds.

@@ -25,16 +25,28 @@ namespace SVS_FreeRoam
         // held, the mouse moves the camera instead of turning it. Up and down raise it, left
         // and right bring it in and out; with the left button held as well, up and down are in
         // and out and left and right slide it sideways. A short click is still the button's
-        // own function (interact). Reset View puts it all back.
-        private const float TapTime = 0.25f;
+        // own function (interact): let go within TapTime without having moved the mouse more
+        // than TapSlop. The drag itself starts with the press, so there is no wait before the
+        // camera moves. Reset View puts it all back.
+        //
+        // The left button walks forward when held. Pressed for a drag with both buttons it
+        // must not: it does not walk while the right one is down, nor after the right one is
+        // let go first until it has been let go too, nor for its first tenth of a second (so
+        // pressing the two together, left a touch early, does not take a step).
+        private const float TapTime = 0.3f, TapSlop = 0.6f, LeftGrace = 0.1f;
+        private static float _rightMoved;
+        private static float _leftDownAt = -1f;
+        private static bool _leftLatched;
+
+        /// <summary>The left button is not to walk forward just now.</summary>
+        internal static bool MouseForwardHeldBack =>
+            _dragInUse && (_dragging || _leftLatched ||
+                           (_leftDownAt >= 0f && Time.unscaledTime - _leftDownAt < LeftGrace));
         private const float DragSpeed = 0.06f, DragLensSpeed = 1.5f, DragLimit = 1.5f;
         private static float _rightDownAt = -1f;
         private static bool _dragging, _dragInUse;
         private static int _tapFrame = -1;
         private static float _raise, _raiseWanted, _side, _sideWanted;
-
-        /// <summary>The right button is held and dragging the camera.</summary>
-        internal static bool Dragging => _dragging;
 
         /// <summary>The right button is the drag button just now, so its own function waits for a short click.</summary>
         internal static bool DragButtonInUse => _dragInUse;
@@ -47,6 +59,11 @@ namespace SVS_FreeRoam
         {
             // Not where the right button is the one that walks forward.
             _dragInUse = active && Plugin.Mode.Value != ForwardMode.RightClickForward && !ClickIdler.BlocksInput;
+
+            bool left = Input.GetMouseButton(0);
+            if (!left) { _leftLatched = false; _leftDownAt = -1f; }
+            else if (_leftDownAt < 0f) _leftDownAt = Time.unscaledTime;
+
             if (!_dragInUse)
             {
                 _rightDownAt = -1f;
@@ -57,38 +74,45 @@ namespace SVS_FreeRoam
             if (Input.GetMouseButtonDown(1))
             {
                 _rightDownAt = Time.unscaledTime;
-                _dragging = false;
+                _rightMoved = 0f;
             }
             if (_rightDownAt < 0f) return;
 
             if (!Input.GetMouseButton(1))
             {
-                if (!_dragging) _tapFrame = Time.frameCount;
+                if (Time.unscaledTime - _rightDownAt <= TapTime && _rightMoved <= TapSlop)
+                    _tapFrame = Time.frameCount;
                 _rightDownAt = -1f;
                 _dragging = false;
                 return;
             }
 
-            if (!_dragging && Time.unscaledTime - _rightDownAt > TapTime) _dragging = true;
-            if (!_dragging) return;
+            _dragging = true;
+            if (left) _leftLatched = true;
 
             float dx = Input.GetAxis("Mouse X"), dy = Input.GetAxis("Mouse Y");
+            _rightMoved += Mathf.Abs(dx) + Mathf.Abs(dy);
 
             // In first person there is no distance to change: the drag works the lens instead,
             // left or down narrowing it (zooming in), right or up widening it.
-            if (_targetDistance <= Plugin.MinZoom.Value + 0.0001f && !Input.GetMouseButton(0))
+            // Once the lens is fully wide again, dragging on (right or up) leaves first person:
+            // the drag below pulls the camera back.
+            if (_targetDistance <= Plugin.MinZoom.Value + 0.0001f && !left && Plugin.OpticalZoom.Value)
             {
-                if (Plugin.OpticalZoom.Value)
-                    _targetFov = Mathf.Clamp(_targetFov + (dx + dy) * DragLensSpeed,
-                                             Plugin.MinimumFov.Value, BaseFov);
-                return;
+                float lens = (dx + dy) * DragLensSpeed;
+                if (lens < 0f || _targetFov < BaseFov - 0.0001f)
+                {
+                    _targetFov = Mathf.Clamp(_targetFov + lens, Plugin.MinimumFov.Value, BaseFov);
+                    return;
+                }
+                if (dy > 0f && dx <= 0f) dx = dy;       // "up" out of first person is "back", not "raise"
             }
 
             // Out of first person. Alone: up and down raise the camera, right pulls it back and
             // left brings it in (as AC_MainCameraExtension has it). With the left button: up is
             // forward, and left and right slide it sideways.
             float back;
-            if (Input.GetMouseButton(0))
+            if (left)
             {
                 back = -dy;
                 _sideWanted = Mathf.Clamp(_sideWanted + dx * DragSpeed, -DragLimit, DragLimit);

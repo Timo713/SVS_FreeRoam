@@ -237,7 +237,7 @@ namespace SVS_FreeRoam
                 // read as one frame of "forward", which drove the player by hand and then
                 // stopped -- cancelling the walk the button had just started.
                 MovePlayer(cam, playerAI, allowMouseForward: !cursorFree && !ClickIdler.BlocksInput &&
-                                                             !CameraRig.Dragging);
+                                                             !CameraRig.MouseForwardHeldBack);
                 SteadyMarker(playerAI);
             }
             else if (_handling)
