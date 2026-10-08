@@ -304,13 +304,13 @@ namespace SVS_FreeRoam
                 if (!IdleWheel.IsOpen) _sticky = false;
                 else
                 {
-                    if (Keys.Down(Plugin.IdleButton, null)) { CloseWheel(); _sticky = false; }
+                    if (Keys.Down(Plugin.IdleButton, Plugin.IdleButton2)) { CloseWheel(); _sticky = false; }
                     else IdleWheel.Tick();
                     return;
                 }
             }
 
-            if (Keys.Down(Plugin.IdleButton, null))
+            if (Keys.Down(Plugin.IdleButton, Plugin.IdleButton2))
             {
                 Cancel();
                 var cam = Camera.main;
@@ -333,7 +333,7 @@ namespace SVS_FreeRoam
             if (_press == Press.None) return;
 
             bool dragged = (Input.mousePosition - _pressAt).magnitude > ClickSlop;
-            if (Keys.Held(Plugin.IdleButton, null))
+            if (Keys.Held(Plugin.IdleButton, Plugin.IdleButton2))
             {
                 if (!IdleWheel.IsOpen && !dragged && Time.unscaledTime - _pressTime >= HoldTime)
                 {
@@ -487,20 +487,20 @@ namespace SVS_FreeRoam
                 if (!IdleWheel.IsOpen) _sticky = false;
                 else
                 {
-                    if (Keys.Down(Plugin.IdleKeyThirdPerson, null)) { CloseWheel(); _sticky = false; }
+                    if (Keys.Down(Plugin.IdleKeyThirdPerson, Plugin.IdleKeyThirdPerson2)) { CloseWheel(); _sticky = false; }
                     else IdleWheel.Tick();
                     return;
                 }
             }
 
-            if (Keys.Down(Plugin.IdleKeyThirdPerson, null) && free)
+            if (Keys.Down(Plugin.IdleKeyThirdPerson, Plugin.IdleKeyThirdPerson2) && free)
             {
                 _press = Press.ThirdPerson;
                 _pressTime = Time.unscaledTime;
             }
             if (_press != Press.ThirdPerson) return;
 
-            if (Keys.Held(Plugin.IdleKeyThirdPerson, null))
+            if (Keys.Held(Plugin.IdleKeyThirdPerson, Plugin.IdleKeyThirdPerson2))
             {
                 if (!IdleWheel.IsOpen && Time.unscaledTime - _pressTime >= HoldTime)
                     OpenAnimationWheel(WheelAnimations(playerAI), new Vector2(Screen.width, Screen.height) * 0.5f, true);

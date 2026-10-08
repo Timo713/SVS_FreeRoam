@@ -28,7 +28,7 @@ namespace SVS_FreeRoam
         // held as well, up is forward and left and right slide it sideways. In first person
         // it works the lens instead. A short click is still the button's own function
         // (interact): let go within TapTime without having moved the mouse more than TapSlop.
-        // Reset View and the first person key put it all back.
+        // The First Person/Reset View key puts it all back.
         //
         // The walking button, pressed for a two-button drag, must not walk: not while the drag
         // button is down, nor after that one is let go first, until it has been let go too.
@@ -121,7 +121,6 @@ namespace SVS_FreeRoam
                                           Plugin.MinZoom.Value, Plugin.MaxZoom.Value);
         }
 
-        private static float _distanceBefore;          // where the camera was when the first person key took it in
         private static float _fov = BaseFov, _targetFov = BaseFov;
         private static bool _started;
 
@@ -371,29 +370,17 @@ namespace SVS_FreeRoam
             }
 
             // Sets the targets only, so with smoothing on it eases back like a scroll would.
-            if (Keys.Down(Plugin.ViewResetKey, Plugin.ViewResetKey2) ||
-                (Plugin.GamepadSupport.Value &&
-                 Keys.Down(Plugin.GamepadResetViewKey, Plugin.GamepadResetViewKey2)))
-            {
-                _targetDistance = StartDistance;
-                _targetFov = BaseFov;
-                _raiseWanted = _sideWanted = 0f;
-            }
-
-            // One key between first person and wherever the camera was before, as in Aicomi.
-            // First person is the camera zoomed all the way in.
-            if (Keys.Down(Plugin.FirstPersonKey, Plugin.FirstPersonKey2) && !ClickIdler.BlocksInput)
+            // One key, and one button on the controller: into first person (the camera zoomed
+            // all the way in), and from there back out to the starting view. Either way the
+            // lens and anything dragged are put back. With smoothing on it glides there.
+            if ((Keys.Down(Plugin.FirstPersonKey, Plugin.FirstPersonKey2) ||
+                 (Plugin.GamepadSupport.Value &&
+                  Keys.Down(Plugin.GamepadResetViewKey, Plugin.GamepadResetViewKey2))) &&
+                !ClickIdler.BlocksInput)
             {
                 float closest = Plugin.MinZoom.Value;
-                if (_targetDistance <= closest + 0.0001f)
-                    _targetDistance = _distanceBefore > closest + 0.05f ? _distanceBefore : StartDistance;
-                else
-                {
-                    _distanceBefore = _targetDistance;
-                    _targetDistance = closest;
-                }
+                _targetDistance = _targetDistance <= closest + 0.0001f ? StartDistance : closest;
                 _targetFov = BaseFov;
-                // Wherever the camera had been dragged to, as well.
                 _raiseWanted = _sideWanted = 0f;
             }
 

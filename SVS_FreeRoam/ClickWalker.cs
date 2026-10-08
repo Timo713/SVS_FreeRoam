@@ -13,7 +13,7 @@ namespace SVS_FreeRoam
         {
             if (!Plugin.ClickWalk.Value) return;
             if (ClickIdler.BlocksInput) return;
-            if (!Keys.Down(Plugin.ClickWalkButton, null)) return;
+            if (!Keys.Down(Plugin.ClickWalkButton, Plugin.ClickWalkButton2)) return;
 
             string why = Picker.WhyNotClickable();
             if (why != null)

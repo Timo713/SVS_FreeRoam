@@ -112,7 +112,7 @@ namespace SVS_FreeRoam
     {
         public const string Guid = "SVS_FreeRoam";
         public const string Name = "SVS_FreeRoam";
-        public const string Version = "1.0.0";
+        public const string Version = "1.1.0";
 
         /// <summary>Junh2x's SVS_3rdPov, which drives the same camera and player.</summary>
         private const string OriginalGuid = "SVS_3rdPov";
@@ -178,10 +178,12 @@ namespace SVS_FreeRoam
         // ---- clicks on the world (from SVS_WalkAnywhere) ---------------------
         internal static ConfigEntry<bool> ClickWalk;
         internal static ConfigEntry<KeyCode> ClickWalkButton;
+        internal static ConfigEntry<KeyCode> ClickWalkButton2;
         internal static ConfigEntry<float> ClickWalkMaxSnap;
         internal static ConfigEntry<bool> ClickFollow;
         internal static ConfigEntry<bool> ClickIdle;
         internal static ConfigEntry<KeyCode> IdleButton;
+        internal static ConfigEntry<KeyCode> IdleButton2;
         internal static ConfigEntry<bool> ThirdPersonSpots;
         internal static ConfigEntry<bool> ShowSpotMarker;
         internal static ConfigEntry<int> WheelSlots;
@@ -192,10 +194,12 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<float> PovBlurStrength;
         internal static ConfigEntry<bool> CharacterWheel;
         internal static ConfigEntry<KeyCode> IdleKeyThirdPerson;
+        internal static ConfigEntry<KeyCode> IdleKeyThirdPerson2;
         internal static ConfigEntry<bool> ClickWalkSpots;
         internal static ConfigEntry<bool> ClickWalkIdle;
         internal static ConfigEntry<float> SpotClickSize;
         internal static ConfigEntry<KeyCode> FollowButton;
+        internal static ConfigEntry<KeyCode> FollowButton2;
         internal static ConfigEntry<float> FollowMinDistance;
         internal static ConfigEntry<float> FollowIdealDistance;
         internal static ConfigEntry<float> FollowRunDistance;
@@ -217,8 +221,6 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<KeyCode> MouseKey2;
         internal static ConfigEntry<KeyCode> RunningKey2;
         internal static ConfigEntry<KeyCode> HideCharacterKey;
-        internal static ConfigEntry<KeyCode> ViewResetKey;
-        internal static ConfigEntry<KeyCode> ViewResetKey2;
         internal static ConfigEntry<KeyCode> FirstPersonKey;
         internal static ConfigEntry<KeyCode> FirstPersonKey2;
         internal static ConfigEntry<KeyCode> HideCharacterKey2;
@@ -402,9 +404,11 @@ namespace SVS_FreeRoam
                         "buttons are shown.", 400));
             CarryOver(ClickWalk, "Click To Walk");
 
+            ClickWalkButton2 = BindSecond("Walk Button 2");
             ClickWalkButton = Config.Bind(
                 "Hotkeys", "Walk Button", KeyCode.Mouse0,
-                Ordered("Click To Walk's button. Mouse0 is the left button.", 59));
+                Paired("Click To Walk's button. Mouse0 is the left button.",
+                       null, 59));
             CarryOver(ClickWalkButton, "Click To Walk");
 
             ClickWalkMaxSnap = Config.Bind(
@@ -437,10 +441,12 @@ namespace SVS_FreeRoam
                         "click somewhere else, to stop. You stop if someone comes over to talk to you.", 300));
             CarryOver(ClickFollow, "Click To Follow");
 
+            FollowButton2 = BindSecond("Follow Button 2");
             FollowButton = Config.Bind(
                 "Hotkeys", "Follow Button", KeyCode.Mouse1,
-                Ordered("Click To Follow's button. Mouse1 is the right button. In third person it only follows while the mouse " +
-                        "cursor is showing; otherwise it is the interact button.", 58));
+                Paired("Click To Follow's button. Mouse1 is the right button. In third person it only follows while the mouse " +
+                        "cursor is showing; otherwise it is the interact button.",
+                       null, 58));
             CarryOver(FollowButton, "Click To Follow");
 
             FollowMinDistance = Config.Bind(
@@ -486,18 +492,22 @@ namespace SVS_FreeRoam
                         "next to you.", 200));
             CarryOver(ClickIdle, "Click To Idle", "Click To Idle");
 
+            IdleButton2 = BindSecond("Idle Button 2");
             IdleButton = Config.Bind(
                 "Hotkeys", "Idle Button", KeyCode.Mouse1,
-                Ordered("Click For Animations: the button to click or hold on your character, or " +
-                        "to hold on another. Mouse1 is the right button.", 57));
+                Paired("Click For Animations: the button to click or hold on your character, or " +
+                        "to hold on another. Mouse1 is the right button.",
+                       null, 57));
             CarryOver(IdleButton, "Click To Idle");
 
+            IdleKeyThirdPerson2 = BindSecond("Idle Key In Third Person 2");
             IdleKeyThirdPerson = Config.Bind(
                 "Hotkeys", "Idle Key In Third Person", KeyCode.Mouse2,
-                Ordered("Mouse2 is the middle button. Tap next to a chair or other special spot to " +
+                Paired("Mouse2 is the middle button. Tap next to a chair or other special spot to " +
                         "use it, and tap again to get up; anywhere else a tap plays a random " +
                         "animation, and another tap stops it. Hold for the wheel. While a character " +
-                        "is marked, the middle button walks to them instead.", 56));
+                        "is marked, the middle button walks to them instead.",
+                       null, 56));
             CarryOver(IdleKeyThirdPerson, "Click To Idle");
 
             WheelSet = Config.Bind(
@@ -709,10 +719,13 @@ namespace SVS_FreeRoam
                 Paired("B. Crouch, in first person. Only while no button on screen is selected, " +
                        "since B also backs out of those.", null, 22));
 
-            GamepadResetViewKey2 = BindSecond("Gamepad Reset View Button 2");
-            GamepadResetViewKey = Config.Bind("Hotkeys", "Gamepad Reset View Button",
+            GamepadResetViewKey2 = BindSecond("Gamepad First Person/Reset View Button 2");
+            CarryOver(GamepadResetViewKey2, "Hotkeys", "Gamepad Reset View Button 2");
+            GamepadResetViewKey = Config.Bind("Hotkeys", "Gamepad First Person/Reset View Button",
                 KeyCode.JoystickButton9,
-                Paired("Right stick click. Reset the camera.", null, 21));
+                Paired("Right stick click. Into first person, and from there back out to the " +
+                       "starting view.", null, 21));
+            CarryOver(GamepadResetViewKey, "Hotkeys", "Gamepad Reset View Button");
 
             GamepadPrevScreenKey2 = BindSecond("Gamepad Previous Screen Button 2");
             GamepadPrevScreenKey = Config.Bind("Hotkeys", "Gamepad Previous Screen Button",
@@ -767,21 +780,19 @@ namespace SVS_FreeRoam
                 Paired("Hold to crouch. Only works in first person (zoomed all the way in).",
                        null, 50));
 
-            ViewResetKey2 = BindSecond("Reset View Key 2");
-            CarryOver(ViewResetKey2, "Hotkeys", "View Reset Key 2");
-            ViewResetKey = Config.Bind("Hotkeys", "Reset View Key", KeyCode.None,
-                Paired("Put the camera back to its starting distance and zoom.",
-                       null, 65));
-
-            SetPairDrawer(HideCharacterKey, HideCharacterKey2);
-            CarryOver(ViewResetKey, "Hotkeys", "View Reset Key");
-            SetPairDrawer(ViewResetKey, ViewResetKey2);
-
-            FirstPersonKey2 = BindSecond("First Person Key 2");
-            FirstPersonKey = Config.Bind("Hotkeys", "First Person Key", KeyCode.Space,
-                Paired("In third person, switch to first person, and back to where the camera was.",
+            FirstPersonKey2 = BindSecond("First Person/Reset View Key 2");
+            CarryOver(FirstPersonKey2, "Hotkeys", "First Person Key 2");
+            FirstPersonKey = Config.Bind("Hotkeys", "First Person/Reset View Key", KeyCode.Space,
+                Paired("In third person, switch to first person; in first person, back out to the " +
+                       "starting view. Either way the zoom and anything dragged are put back.",
                        null, 64));
+            CarryOver(FirstPersonKey, "Hotkeys", "First Person Key");
+            SetPairDrawer(HideCharacterKey, HideCharacterKey2);
             SetPairDrawer(FirstPersonKey, FirstPersonKey2);
+            SetPairDrawer(ClickWalkButton, ClickWalkButton2);
+            SetPairDrawer(FollowButton, FollowButton2);
+            SetPairDrawer(IdleButton, IdleButton2);
+            SetPairDrawer(IdleKeyThirdPerson, IdleKeyThirdPerson2);
             SetPairDrawer(CrouchKey, CrouchKey2);
 
 

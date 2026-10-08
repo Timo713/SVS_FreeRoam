@@ -185,7 +185,7 @@ namespace SVS_FreeRoam
             // (right click on someone); interact walking to whoever is aimed at as well was
             // the two fighting over one click.
             bool followClick = cursorFree && Plugin.ClickFollow.Value &&
-                               Keys.Down(Plugin.FollowButton, null);
+                               Keys.Down(Plugin.FollowButton, Plugin.FollowButton2);
             bool interactKey = InteractPressed() && !followClick;
             // While the animation wheel is up the mouse is choosing from it.
             bool interactPressed = (interactKey || talkPad || placePad) && !ClickIdler.BlocksInput;

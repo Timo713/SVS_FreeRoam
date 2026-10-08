@@ -205,8 +205,13 @@ namespace SVS_FreeRoam
                 bool armed = Time.unscaledTime < _resetArmedUntil;
                 bool clicked = GUILayout.Button(armed ? "Click again to confirm" : "Reset All Settings",
                                                 GUILayout.ExpandWidth(true));
-                // As wide as the other rows' fields: they end where their Reset button begins.
-                GUILayout.Space(ResetWidth + 4f);
+                // The same box as a dropdown's button on the rows below: the settings window lays
+                // those out as a button that takes the room left, then its own "Reset" button.
+                // That second button is not drawn here, but the room for it is taken the same
+                // way (same text, same style, same option), so the two rows end level.
+                // (Measured in game: reserved this way the gap came out one button margin short.)
+                GUILayout.Space(GUI.skin.button.margin.right);
+                GUILayoutUtility.GetRect(new GUIContent("Reset"), GUI.skin.button, GUILayout.ExpandWidth(false));
                 if (!clicked) return;
                 if (!armed)
                 {
