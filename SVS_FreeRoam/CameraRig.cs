@@ -27,7 +27,7 @@ namespace SVS_FreeRoam
         // and out and left and right slide it sideways. A short click is still the button's
         // own function (interact). Reset View puts it all back.
         private const float TapTime = 0.25f;
-        private const float DragHeightSpeed = 0.03f, DragZoomSpeed = 0.15f, DragLimit = 1.5f;
+        private const float DragSpeed = 0.06f, DragLensSpeed = 1.5f, DragLimit = 1.5f;
         private static float _rightDownAt = -1f;
         private static bool _dragging, _dragInUse;
         private static int _tapFrame = -1;
@@ -73,18 +73,32 @@ namespace SVS_FreeRoam
             if (!_dragging) return;
 
             float dx = Input.GetAxis("Mouse X"), dy = Input.GetAxis("Mouse Y");
-            float zoom;
+
+            // In first person there is no distance to change: the drag works the lens instead,
+            // left or down narrowing it (zooming in), right or up widening it.
+            if (_targetDistance <= Plugin.MinZoom.Value + 0.0001f && !Input.GetMouseButton(0))
+            {
+                if (Plugin.OpticalZoom.Value)
+                    _targetFov = Mathf.Clamp(_targetFov + (dx + dy) * DragLensSpeed,
+                                             Plugin.MinimumFov.Value, BaseFov);
+                return;
+            }
+
+            // Out of first person. Alone: up and down raise the camera, right pulls it back and
+            // left brings it in (as AC_MainCameraExtension has it). With the left button: up is
+            // forward, and left and right slide it sideways.
+            float back;
             if (Input.GetMouseButton(0))
             {
-                zoom = dy;
-                _sideWanted = Mathf.Clamp(_sideWanted + dx * DragHeightSpeed, -DragLimit, DragLimit);
+                back = -dy;
+                _sideWanted = Mathf.Clamp(_sideWanted + dx * DragSpeed, -DragLimit, DragLimit);
             }
             else
             {
-                zoom = dx;
-                _raiseWanted = Mathf.Clamp(_raiseWanted + dy * DragHeightSpeed, -DragLimit, DragLimit);
+                back = dx;
+                _raiseWanted = Mathf.Clamp(_raiseWanted + dy * DragSpeed, -DragLimit, DragLimit);
             }
-            _targetDistance = Mathf.Clamp(_targetDistance - zoom * DragZoomSpeed,
+            _targetDistance = Mathf.Clamp(_targetDistance + back * DragSpeed,
                                           Plugin.MinZoom.Value, Plugin.MaxZoom.Value);
         }
 
@@ -361,6 +375,8 @@ namespace SVS_FreeRoam
                     _targetDistance = closest;
                 }
                 _targetFov = BaseFov;
+                // Wherever the camera had been dragged to, as well.
+                _raiseWanted = _sideWanted = 0f;
             }
 
             float sensitivity = Plugin.LookSensitivity.Value;
@@ -368,8 +384,9 @@ namespace SVS_FreeRoam
             // The animation wheel is steered with the mouse; the view holds still meanwhile.
             if (applyInput && !IdleWheel.IsOpen)
             {
-                // (While the right button drags the camera the mouse is moving it, not turning it.)
-                if (!_dragging)
+                // (Not while the right button is down: it may be about to drag the camera, and
+                // turning it for the quarter second until that is known showed as a jerk.)
+                if (_rightDownAt < 0f)
                 {
                     _yaw += Input.GetAxis("Mouse X") * sensitivity;
                     _pitch -= Input.GetAxis("Mouse Y") * sensitivity;

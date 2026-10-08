@@ -17,14 +17,6 @@ namespace SVS_FreeRoam
         WhileHeld,
     }
 
-    /// <summary>What third person does with the game's depth of field.</summary>
-    public enum PovDepthOfField
-    {
-        FocusOnYourCharacter,
-        Off,
-        Unchanged,
-    }
-
     /// <summary>How a doorway crossing in third person changes the screen.</summary>
     public enum MapFade
     {
@@ -206,7 +198,6 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<string> Favorites3;
         internal static ConfigEntry<bool> AnimationProps;
         internal static ConfigEntry<float> PovBlurStrength;
-        internal static ConfigEntry<PovDepthOfField> PovDepthOfFieldMode;
         internal static ConfigEntry<bool> CharacterWheel;
         internal static ConfigEntry<KeyCode> IdleKeyThirdPerson;
         internal static ConfigEntry<KeyCode> IdleKeyThirdPerson2;
@@ -396,18 +387,12 @@ namespace SVS_FreeRoam
                         "the new map loading in. Travelling with the location buttons keeps the game's " +
                         "own fade.", 5));
 
-            PovDepthOfFieldMode = Config.Bind(
-                "Camera", "Depth Of Field In Third Person", PovDepthOfField.Off,
-                Ordered("Only matters with Depth Of Field switched on in the game's graphics " +
-                        "settings. Focus On Your Character keeps you and whoever is near you sharp; " +
-                        "Off switches the blur off while third person is on; Unchanged leaves the " +
-                        "game's own focus, which blurs anyone close to the camera. In first person " +
-                        "the focus is on whoever you aim at, and nothing is blurred otherwise.", 4));
-
             PovBlurStrength = Config.Bind(
-                "Camera", "Third Person Blur Strength", 1f,
-                Ordered("How strongly the background is blurred in third person, compared with the " +
-                        "map's own setting. 1 matches it; 0 is no blur.",
+                "Camera", "Third Person Blur Strength", 0f,
+                Ordered("Depth of field in third person: how strongly the background is blurred " +
+                        "while you, or in first person whoever you aim at, stay sharp. 0 is no " +
+                        "blur; 1 matches the map's own setting. Only with Depth Of Field switched " +
+                        "on in the game's graphics settings.",
                         new AcceptableValueRange<float>(0f, 5f), 3));
 
             ClickWalk = Config.Bind(
@@ -904,10 +889,10 @@ namespace SVS_FreeRoam
                     new ConfigurationManagerAttributes { Order = 34 }));
 
             PovOn2DMaps = Config.Bind(
-                "Camera", "Third Person On 2D Maps", false,
+                "Camera", "Third Person On 2D Maps (Not Recommended)", false,
                 new ConfigDescription(
-                    "Allow third person on the maps that are a flat picture. They were not made " +
-                    "for it: expect to walk on a backdrop.", null,
+                    "NOT RECOMMENDED. Allows third person on the maps that are a flat picture. " +
+                    "They were not made for it: expect to walk on a backdrop.", null,
                     new ConfigurationManagerAttributes { Order = 3 }));
 
             OverviewRestore = Config.Bind(

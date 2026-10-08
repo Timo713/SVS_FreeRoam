@@ -258,7 +258,9 @@ namespace SVS_FreeRoam
             var bctrl = playerAI.BehaviourCtrl;
             var point = bctrl?.target?.pInfo;
             return point != null && !Walker.IsOurTarget(bctrl) && IsSeat(point) &&
-                   Vector3.Distance(SeatPosition(point), playerAI.transform.position) < 1f
+                   // (The character itself stands at the point; only its body is on the seat.)
+                   Mathf.Min(Vector3.Distance(point.transform.position, playerAI.transform.position),
+                             Vector3.Distance(SeatPosition(point), playerAI.transform.position)) < 1f
                 ? point : null;
         }
 

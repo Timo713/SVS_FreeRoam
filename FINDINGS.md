@@ -2063,7 +2063,10 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   Why: the log showed ring and body both back at the seat's offset about a second after
   walking off. The game still had the seat as the target and **re-seated the player when
   they stood still**; hand movement resets the body every frame (`MovePlayer`) but not
-  the ring, which then trailed beside the player. UNVERIFIED (round 14).
+  the ring, which then trailed beside the player. Round 14: rarer, not gone. Round 15:
+  the remaining cases were walk-offs never noticed, because `CurrentSeat` measured the
+  player's distance to the seat (under 1 m) while the character stands at the point,
+  0.9 to 1.2 m from its seat; it takes the nearer of the two now. UNVERIFIED.
 - **Someone else's seat**: a point another character is at (1.5 m) or walking to is
   skipped (`Taken`). UNVERIFIED.
 - **Animation sets** (`Animation Set`): Fitting (standing: what standing spots offer with
@@ -2163,9 +2166,11 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
 
 - **Right-button drag in third person** (`CameraRig.TrackDrag`), after
   AC_MainCameraExtension: held longer than 0.25 s, the mouse moves the camera instead of
-  turning it. Alone: up/down height, left/right distance. With the left button too:
-  up/down distance, left/right sideways. Speeds are that plugin's (0.03 and 0.15 per
-  mouse unit), limits 1.5 m, eased with the camera's smoothing, cleared by Reset View.
+  turning it (looking stops as soon as the button is down). Alone: up/down height,
+  right pulls back and left brings in. With the left button too: up is forward,
+  left/right sideways. In first person the drag works the lens instead (left or down
+  zooms in). One speed, 0.06 per mouse unit; limits 1.5 m; eased with the camera's
+  smoothing; cleared by Reset View and by the first person key.
   Because of it the right button's own function (interact) fires on a short click, on
   release, while third person has the cursor locked (`InteractPressed`). Off when Forward
   Mode is RightClickForward. UNVERIFIED.
@@ -2174,4 +2179,5 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   `1 - exp(-min(unscaled dt, 0.1) / slider)`, the slider a time in seconds.
 - **Third Person On 2D Maps** (off): skips the `Is2DMap` / `IsUseTimezone2D` test that
   keeps third person off those maps. Nothing else was adapted for them. UNVERIFIED.
-- Depth Of Field In Third Person now defaults to Off.
+- The Depth Of Field In Third Person dropdown is gone: the focus is always ours, and
+  "Third Person Blur Strength" (default 0 = no blur) is the only setting.

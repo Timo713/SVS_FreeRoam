@@ -39,8 +39,7 @@ namespace SVS_FreeRoam
             if (_failed) return;
             try
             {
-                var mode = Plugin.PovDepthOfFieldMode.Value;
-                if (!pov || cam == null || playerAI == null || mode == PovDepthOfField.Unchanged)
+                if (!pov || cam == null || playerAI == null)
                 {
                     Restore();
                     return;
@@ -69,7 +68,7 @@ namespace SVS_FreeRoam
 
                 // Eased, so a change of what is in focus (the player, someone aimed at, nothing)
                 // glides instead of snapping: the distance moves, and the blur fades in and out.
-                bool wanted = mode != PovDepthOfField.Off && focus >= 0f;
+                bool wanted = Plugin.PovBlurStrength.Value > 0f && focus >= 0f;
                 float ease = 1f - Mathf.Exp(-FocusSpeed * Time.unscaledDeltaTime);
                 if (wanted)
                     _distance = _blur < 0.01f ? Mathf.Max(0.5f, focus)      // nothing to glide from
