@@ -2196,3 +2196,41 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   setting is bound right after Camera's.
 - The Depth Of Field In Third Person dropdown is gone: the focus is always ours, and
   "Third Person Blur Strength" (default 0 = no blur) is the only setting.
+
+## 32. Walks the game makes for two, and leaving them alone (2026-10-08)
+
+Reported: after accepting an invitation to an activity it took about a minute to start
+(the game's own fallback), and while following someone to study a click or a step could
+take the player off course so the trip never finished.
+
+From the listings (CONFIRMED by `isil.ps1`, the fix itself UNTESTED in game):
+
+- `SimulationManager.IsPlayerAction(bool _isIncludeChase)` is the game's "may the player
+  act" check. False when the player's `charasGameParam` has `isWithAction`, `isEveryone`,
+  `isEveryoneHPlay`, `isDontTouch`, or `isChase` (unless chase is included), or their
+  tree is in `Contact`. The game gates all of its own input on it: `MoveStop`,
+  `SetTarget`, `MouseMiddleClick`, `CursorTargetSelect`, `WheelTargetSelect`,
+  `MapManager.MoveButtonAction`, `PCActionButtonAction`. So `scene.MoveStop()` already
+  does nothing then; our `BehaviourCtrl.Stop(true)` and `SetCharaMapMove` did not ask.
+- `MapManager.SetCharaMapMove(kind, bctrl, ...)` **stores `kind` in `bctrl.BaseAction`**,
+  then `target.SetMap`, `ChangeMode(Move)`, `RunAndWalk`. The talk tasks
+  (`PCPassiveTalkTask._WithYouAction`, `_AfterAction`, `NPCTalkTask.*`,
+  `SVMoveToDo.InterpersonalProc`) set `isWithAction` on both characters and send each
+  to their point. A click-walk of ours calls it with `Personal` and our marker, which
+  replaces both the target and the kind: the likely reason one click was enough to break
+  the trip (LIKELY).
+- Being led ("follow me"): `_AfterAction` gives the follower a `Chara` target,
+  `RunOrWalk`, `isChase = true` and `ChangeMode(Move)`.
+
+What the plugin does: `ThirdPersonController.PlayerLed` = one of those five flags, the
+tree in `Move`, and the target not our marker. While it holds: no hand movement
+(`MovePlayer`, and no `Stop` from it), no interact, Go To Marked, gamepad B stop or
+gamepad travel, no click-walk, follow or idle clicks (`Picker.WhyNotClickable`,
+`ClickIdler.Update`), no arrival stop on a map change, and no per-frame `Stop` during a
+conversation. Limited to `Move` on purpose: the flags may stay on while standing about
+at a gathering, where the player should still be free (UNVERIFIED how long they last).
+With Debug Info on the log says "Led: ..." when it starts and ends.
+
+Open: if the trip still stalls with "Led:" in the log, something other than our input is
+stopping it; if "Led:" never appears, the flags are set later than the walk begins and
+`BaseAction == Interpersonal` is the next thing to test.

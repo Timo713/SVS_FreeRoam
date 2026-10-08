@@ -30,6 +30,7 @@ namespace SVS_FreeRoam
             if (eventSystem != null && eventSystem.IsPointerOverGameObject()) return "over UI";
 
             if ((Scene.IsOverlap || ThirdPersonController.IsAnyMenuOpen())) return "a menu, conversation or H scene is open";
+            if (ThirdPersonController.PlayerLed) return "the game is walking the player somewhere with someone";
             return null;
         }
 

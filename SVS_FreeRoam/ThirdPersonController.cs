@@ -35,6 +35,33 @@ namespace SVS_FreeRoam
 
         /// <summary>The player is being moved by hand this frame, not by a walk of the game's.</summary>
         internal static bool Handling => _handling;
+
+        /// <summary>
+        /// The game is walking the player somewhere with someone: to an activity they agreed
+        /// to, along behind a character, to a gathering. The game refuses its own clicks then
+        /// (SimulationManager.IsPlayerAction), and so do we: stopping that walk or starting
+        /// another leaves the other character waiting at the far end (FINDINGS.md §32).
+        /// </summary>
+        internal static bool PlayerLed
+        {
+            get
+            {
+                var playerAI = GameChara.PlayerAI;
+                var bctrl = playerAI != null ? playerAI.BehaviourCtrl : null;
+                var state = playerAI?.charaData?.charasGameParam;
+                if (bctrl == null || state == null) return false;
+                if (!(state.isWithAction || state.isChase || state.isEveryone ||
+                      state.isEveryoneHPlay || state.isDontTouch)) return false;
+
+                // Only for as long as the walk lasts: standing about at a gathering, the
+                // player is their own again.
+                var tree = bctrl.BehaviorTreeCtrl;
+                return tree != null && tree.ActionMode == Manager.Game.ActionKind.Move &&
+                       !Walker.IsOurTarget(bctrl);
+            }
+        }
+
+        private static bool _wasLed;
         private static bool _running;
         private static int _lastMapId = int.MinValue;
 
@@ -64,6 +91,15 @@ namespace SVS_FreeRoam
 
             int mapId = playerAI != null ? playerAI.BehaviourCtrl.NowMapID : mapManager.MapID;
 
+            bool led = PlayerLed;
+            if (led != _wasLed)
+            {
+                _wasLed = led;
+                Notice.Log(led ? "Led: the game is walking the player somewhere with someone (" +
+                                 ClickWalker.Describe(playerAI.BehaviourCtrl) + "); movement and clicks are left alone."
+                               : "Led: over.");
+            }
+
             if (mapId != _lastMapId)
             {
                 _lastMapId = mapId;
@@ -91,7 +127,7 @@ namespace SVS_FreeRoam
             // button mode just used the press, and not over an open screen.
             if (playerAI != null && Plugin.GamepadSupport.Value &&
                 Keys.Down(Plugin.GamepadBackKey, Plugin.GamepadBackKey2) && !GamepadUI.Active &&
-                !GamepadUI.UsedBThisFrame && !Scene.IsOverlap && !IsAnyMenuOpen())
+                !GamepadUI.UsedBThisFrame && !Scene.IsOverlap && !IsAnyMenuOpen() && !led)
             {
                 scene.MoveStop();
                 playerAI.BehaviourCtrl.Stop(true);
@@ -108,7 +144,8 @@ namespace SVS_FreeRoam
                 if (playerAI != null) HandleMarkedOutsideThirdPerson(scene, playerAI);
 
                 // Gamepad A at a doorway or job spot, where third-person's interact can't reach.
-                if (playerAI != null && !Scene.IsOverlap && !IsAnyMenuOpen() && !ClickIdler.BlocksInput)
+                if (playerAI != null && !Scene.IsOverlap && !IsAnyMenuOpen() && !ClickIdler.BlocksInput &&
+                    !led)
                     GamepadTravel.Run(scene, mapManager, playerAI, mapId);
 
                 // WASD In All Views is the one setting that reaches past third-person.
@@ -188,7 +225,7 @@ namespace SVS_FreeRoam
                                Keys.Down(Plugin.FollowButton, Plugin.FollowButton2);
             bool interactKey = InteractPressed() && !followClick;
             // While the animation wheel is up the mouse is choosing from it.
-            bool interactPressed = (interactKey || talkPad || placePad) && !ClickIdler.BlocksInput;
+            bool interactPressed = (interactKey || talkPad || placePad) && !ClickIdler.BlocksInput && !led;
             var filter = interactKey || (talkPad && placePad) ? TargetFilter.Any
                        : talkPad ? TargetFilter.People
                        : placePad ? TargetFilter.Places
@@ -198,7 +235,7 @@ namespace SVS_FreeRoam
             // camera. The game's own middle-click handler stays suppressed in third person
             // (Hooks), so this is the only thing that answers it.
             bool markedPressed = Keys.Down(Plugin.GoToMarkedKey, Plugin.GoToMarkedKey2) &&
-                                 !ClickIdler.BlocksInput;
+                                 !ClickIdler.BlocksInput && !led;
             ForgetArrivedWalk(playerAI);
 
             // Order matters, and it is: cancel, then marked, then anything nearby, then
@@ -228,7 +265,7 @@ namespace SVS_FreeRoam
             {
                 var target = FindNearestTarget(scene, mapManager, playerAI, cam, filter);
                 HandleInteract(scene, mapManager, playerAI, target, buttonMode, interactPressed);
-                if (!cursorFree)
+                if (!cursorFree && !led)
                     ClickIdler.ThirdPerson(playerAI, _walkingTo == null &&
                                                      FindMarkedCharacter(playerAI) == null);
 
@@ -347,7 +384,7 @@ namespace SVS_FreeRoam
                 // on purpose and has to keep going through each of them.
                 // Nor on a walk the click features made: following someone goes through
                 // doorways on purpose.
-                bool stop = !_menuTrip && !Follower.Following &&
+                bool stop = !_menuTrip && !Follower.Following && !PlayerLed &&
                             !Walker.IsOurTarget(playerAI.BehaviourCtrl) &&
                             ((ViewMode.Active && !flat) ||
                              (gamepadTrip && Plugin.NoAutoWalkAfterGamepadTravel.Value));
@@ -373,7 +410,7 @@ namespace SVS_FreeRoam
 
             // Only movement that isn't ours: not the player's own stick or keys, and not a walk
             // they asked for with interact or Go To Marked.
-            if (moved && !_handling && _walkingTo == null)
+            if (moved && !_handling && _walkingTo == null && !PlayerLed)
             {
                 scene.MoveStop();
                 playerAI.BehaviourCtrl.Stop(true);
@@ -467,6 +504,7 @@ namespace SVS_FreeRoam
 
         private static void CancelWalk(SimulationScene scene, SV.Chara.AI playerAI)
         {
+            if (PlayerLed) return;
             scene.MoveStop();
             playerAI.BehaviourCtrl.Stop(true);
             _walkingTo = null;
@@ -685,7 +723,8 @@ namespace SVS_FreeRoam
             var adv = SingletonInitializer<ADV.ADVManager>._instance;
             bool inAdv = adv != null && adv.IsADV;
 
-            if (_handling || inAdv)
+            // (Not a walk the game starts for two while its conversation is still closing.)
+            if (_handling || (inAdv && !PlayerLed))
             {
                 playerAI.BehaviourCtrl.Stop(true);
                 _handling = false;
@@ -1303,6 +1342,13 @@ namespace SVS_FreeRoam
         private static void MovePlayer(Camera cam, SV.Chara.AI playerAI, bool allowMouseForward,
                                        bool screenRelative = false)
         {
+            // Not under the game's feet. No Stop either: that would end the game's walk.
+            if (PlayerLed)
+            {
+                _handling = false;
+                return;
+            }
+
             float horizontal = Input.GetAxis("Horizontal");
             float vertical = Input.GetAxis("Vertical");
             // The animation wheel, steered with the controller, has the sticks.

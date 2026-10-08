@@ -286,7 +286,7 @@ namespace SVS_FreeRoam
                 _swallowEndFrame = Time.frameCount;
             }
 
-            if (!Plugin.ClickIdle.Value) { Cancel(); return; }
+            if (!Plugin.ClickIdle.Value || ThirdPersonController.PlayerLed) { Cancel(); return; }
             if (GamepadIdle(playerAI)) return;
             if (Cursor.lockState == CursorLockMode.Locked)
             {
