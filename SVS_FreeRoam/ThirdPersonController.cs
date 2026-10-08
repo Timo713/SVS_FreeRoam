@@ -79,7 +79,7 @@ namespace SVS_FreeRoam
             mapManager.MapListTable?.TryGetValue(mapId, out mapInfo);
 
             // (2D maps are a picture with no room to walk around in: third person only if asked for.)
-            bool flat = !Plugin.PovOn2DMaps.Value &&
+            bool flat = Plugin.PovMode.Value != PovAvailability.EnabledOnAllMaps &&
                         (mapManager.Is2DMap(mapManager.MapID) ||
                          (mapInfo != null && mapInfo.IsUseTimezone2D));
 
@@ -185,7 +185,7 @@ namespace SVS_FreeRoam
             // (right click on someone); interact walking to whoever is aimed at as well was
             // the two fighting over one click.
             bool followClick = cursorFree && Plugin.ClickFollow.Value &&
-                               Keys.Down(Plugin.FollowButton, Plugin.FollowButton2);
+                               Keys.Down(Plugin.FollowButton, null);
             bool interactKey = InteractPressed() && !followClick;
             // While the animation wheel is up the mouse is choosing from it.
             bool interactPressed = (interactKey || talkPad || placePad) && !ClickIdler.BlocksInput;
@@ -278,14 +278,14 @@ namespace SVS_FreeRoam
         private static Vector3 _menuTripLastPosition;
 
         /// <summary>
-        /// The interact key going down. The right mouse button is also held to drag the camera
-        /// in third person, so there it counts as a short click, on release.
+        /// The interact key going down. The mouse button that does not walk forward is also held
+        /// to drag the camera in third person, so there it counts as a short click, on release.
         /// </summary>
         private static bool InteractPressed()
         {
             static bool Pressed(KeyCode key) =>
                 key != KeyCode.None &&
-                (key == KeyCode.Mouse1 && CameraRig.DragButtonInUse ? CameraRig.RightTapped : Input.GetKeyDown(key));
+                (key == CameraRig.DragKey && CameraRig.DragButtonInUse ? CameraRig.DragTapped : Input.GetKeyDown(key));
             return Pressed(Plugin.InteractKey.Value) || Pressed(Plugin.InteractKey2.Value);
         }
 

@@ -117,11 +117,11 @@ namespace SVS_FreeRoam
             // (camera turning, in some views) is never read as "follow".
             // Only a press made with the cursor free: in third person the same button is
             // interact, and the cursor is free only with the location buttons up.
-            if (Keys.Down(Plugin.FollowButton, Plugin.FollowButton2))
+            if (Keys.Down(Plugin.FollowButton, null))
                 _pressAt = Cursor.lockState == CursorLockMode.Locked ||
                            ClickIdler.WheelClosedFrame == Time.frameCount   // that press chose from the wheel
                     ? (Vector3?)null : Input.mousePosition;
-            if (!Keys.Up(Plugin.FollowButton, Plugin.FollowButton2) || _pressAt == null) return;
+            if (!Keys.Up(Plugin.FollowButton, null) || _pressAt == null) return;
             // A release that just chose from the character wheel is not also a click.
             if (ClickIdler.WheelClosedFrame == Time.frameCount) { _pressAt = null; return; }
 

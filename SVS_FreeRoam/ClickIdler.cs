@@ -82,7 +82,6 @@ namespace SVS_FreeRoam
             Notice.Log($"Idle: playing {id} ({Name(id)}).");
 
             bool played = false;
-            if (Plugin.AnimationProps.Value)
             {
                 // The game's own way of putting a character into an animation, which also
                 // shows what the animation holds (a phone, a book).
@@ -112,8 +111,7 @@ namespace SVS_FreeRoam
         /// </summary>
         private static void Playing(SV.Chara.AI playerAI, int id)
         {
-            if (Plugin.AnimationProps.Value) StartVoice(playerAI, id);
-            else StopVoice();
+            StartVoice(playerAI, id);
 
             // Anything but the seat's plain pose: from here on the player is kept on the seat.
             int resting = Resting(playerAI);
@@ -306,13 +304,13 @@ namespace SVS_FreeRoam
                 if (!IdleWheel.IsOpen) _sticky = false;
                 else
                 {
-                    if (Keys.Down(Plugin.IdleButton, Plugin.IdleButton2)) { CloseWheel(); _sticky = false; }
+                    if (Keys.Down(Plugin.IdleButton, null)) { CloseWheel(); _sticky = false; }
                     else IdleWheel.Tick();
                     return;
                 }
             }
 
-            if (Keys.Down(Plugin.IdleButton, Plugin.IdleButton2))
+            if (Keys.Down(Plugin.IdleButton, null))
             {
                 Cancel();
                 var cam = Camera.main;
@@ -335,7 +333,7 @@ namespace SVS_FreeRoam
             if (_press == Press.None) return;
 
             bool dragged = (Input.mousePosition - _pressAt).magnitude > ClickSlop;
-            if (Keys.Held(Plugin.IdleButton, Plugin.IdleButton2))
+            if (Keys.Held(Plugin.IdleButton, null))
             {
                 if (!IdleWheel.IsOpen && !dragged && Time.unscaledTime - _pressTime >= HoldTime)
                 {
@@ -489,20 +487,20 @@ namespace SVS_FreeRoam
                 if (!IdleWheel.IsOpen) _sticky = false;
                 else
                 {
-                    if (Keys.Down(Plugin.IdleKeyThirdPerson, Plugin.IdleKeyThirdPerson2)) { CloseWheel(); _sticky = false; }
+                    if (Keys.Down(Plugin.IdleKeyThirdPerson, null)) { CloseWheel(); _sticky = false; }
                     else IdleWheel.Tick();
                     return;
                 }
             }
 
-            if (Keys.Down(Plugin.IdleKeyThirdPerson, Plugin.IdleKeyThirdPerson2) && free)
+            if (Keys.Down(Plugin.IdleKeyThirdPerson, null) && free)
             {
                 _press = Press.ThirdPerson;
                 _pressTime = Time.unscaledTime;
             }
             if (_press != Press.ThirdPerson) return;
 
-            if (Keys.Held(Plugin.IdleKeyThirdPerson, Plugin.IdleKeyThirdPerson2))
+            if (Keys.Held(Plugin.IdleKeyThirdPerson, null))
             {
                 if (!IdleWheel.IsOpen && Time.unscaledTime - _pressTime >= HoldTime)
                     OpenAnimationWheel(WheelAnimations(playerAI), new Vector2(Screen.width, Screen.height) * 0.5f, true);

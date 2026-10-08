@@ -9,6 +9,18 @@ using UnityEngine;
 
 namespace SVS_FreeRoam
 {
+    /// <summary>Where third person is available.</summary>
+    public enum PovAvailability
+    {
+        [System.ComponentModel.Description("Enabled On 3D Maps")]
+        EnabledOn3DMaps,
+
+        [System.ComponentModel.Description("Enabled On All Maps (Not Recommended)")]
+        EnabledOnAllMaps,
+
+        Disabled,
+    }
+
     /// <summary>How the crouch key works.</summary>
     public enum CrouchMode
     {
@@ -60,23 +72,6 @@ namespace SVS_FreeRoam
 
         /// <summary>Restore the location's own overview camera.</summary>
         On,
-    }
-
-    /// <summary>Which easing Camera Smoothing uses.</summary>
-    public enum SmoothingFeel
-    {
-        Original,
-        AicomiGlide,
-    }
-
-    /// <summary>Which part of the camera rig gets eased when smoothing is on.</summary>
-    public enum SmoothingType
-    {
-        /// <summary>Ease what the camera orbits; mouse look stays fully responsive.</summary>
-        FollowPivot,
-
-        /// <summary>Ease the camera position itself.</summary>
-        CameraPosition,
     }
 
     /// <summary>How the mouse may turn the camera while the location buttons are up.</summary>
@@ -183,12 +178,10 @@ namespace SVS_FreeRoam
         // ---- clicks on the world (from SVS_WalkAnywhere) ---------------------
         internal static ConfigEntry<bool> ClickWalk;
         internal static ConfigEntry<KeyCode> ClickWalkButton;
-        internal static ConfigEntry<KeyCode> ClickWalkButton2;
         internal static ConfigEntry<float> ClickWalkMaxSnap;
         internal static ConfigEntry<bool> ClickFollow;
         internal static ConfigEntry<bool> ClickIdle;
         internal static ConfigEntry<KeyCode> IdleButton;
-        internal static ConfigEntry<KeyCode> IdleButton2;
         internal static ConfigEntry<bool> ThirdPersonSpots;
         internal static ConfigEntry<bool> ShowSpotMarker;
         internal static ConfigEntry<int> WheelSlots;
@@ -196,16 +189,13 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<string> Favorites1;
         internal static ConfigEntry<string> Favorites2;
         internal static ConfigEntry<string> Favorites3;
-        internal static ConfigEntry<bool> AnimationProps;
         internal static ConfigEntry<float> PovBlurStrength;
         internal static ConfigEntry<bool> CharacterWheel;
         internal static ConfigEntry<KeyCode> IdleKeyThirdPerson;
-        internal static ConfigEntry<KeyCode> IdleKeyThirdPerson2;
         internal static ConfigEntry<bool> ClickWalkSpots;
         internal static ConfigEntry<bool> ClickWalkIdle;
         internal static ConfigEntry<float> SpotClickSize;
         internal static ConfigEntry<KeyCode> FollowButton;
-        internal static ConfigEntry<KeyCode> FollowButton2;
         internal static ConfigEntry<float> FollowMinDistance;
         internal static ConfigEntry<float> FollowIdealDistance;
         internal static ConfigEntry<float> FollowRunDistance;
@@ -244,7 +234,10 @@ namespace SVS_FreeRoam
         internal static ConfigEntry<KeyCode> SprintKey;
         internal static ConfigEntry<KeyCode> SprintKey2;
         internal static ConfigEntry<bool> MoveInAllViews;
-        internal static ConfigEntry<bool> ThirdPersonMode;
+        internal static ConfigEntry<PovAvailability> PovMode;
+
+        /// <summary>Third person may be switched on at all.</summary>
+        internal static bool PovAllowed => PovMode.Value != PovAvailability.Disabled;
         internal static ConfigEntry<bool> GamepadSupport;
 
         // ---- gamepad ---------------------------------------------------------
@@ -289,15 +282,10 @@ namespace SVS_FreeRoam
 
         // ---- camera ----------------------------------------------------------
         internal static ConfigEntry<float> CameraHeight;
-        internal static ConfigEntry<float> MinPitch;
-        internal static ConfigEntry<float> MaxPitch;
         internal static ConfigEntry<float> MinZoom;
         internal static ConfigEntry<float> MaxZoom;
         internal static ConfigEntry<float> LookSensitivity;
         internal static ConfigEntry<float> CameraSmoothing;
-        internal static ConfigEntry<SmoothingType> SmoothingMode;
-        internal static ConfigEntry<SmoothingFeel> SmoothingCurve;
-        internal static ConfigEntry<bool> PovOn2DMaps;
         internal static ConfigEntry<OverviewRestoreMode> OverviewRestore;
         internal static ConfigEntry<float> HideCharacterBelow;
         internal static ConfigEntry<bool> NoSmoothingWhenHidden;
@@ -347,11 +335,17 @@ namespace SVS_FreeRoam
                         CustomDrawer = PairDrawer.ResetAll(Config),
                     }));
 
-            ThirdPersonMode = Config.Bind(
-                "General", "PoV Mode", true,
-                Ordered("The third-person camera and its controls. Off, you keep the game's own " +
-                        "overview camera; the other features still work.", 99));
-            CarryOver(ThirdPersonMode, "General", "Third-Person Mode");
+            PovMode = Config.Bind(
+                "General", "PoV Mode", PovAvailability.EnabledOn3DMaps,
+                Ordered("The third-person camera and its controls.\n\nEnabled On 3D Maps - " +
+                        "everywhere you can walk around.\nEnabled On All Maps (Not Recommended) - " +
+                        "also on the maps that are a flat picture. They were not made for it: " +
+                        "expect to walk on a backdrop.\nDisabled - you keep the game's own overview " +
+                        "camera; the other features still work.", 99));
+            // It was a checkbox (and before that "Third-Person Mode").
+            if (ValueInFile("General", "PoV Mode")?.Trim().ToLowerInvariant() == "false" ||
+                ValueInFile("General", "Third-Person Mode")?.Trim().ToLowerInvariant() == "false")
+                PovMode.Value = PovAvailability.Disabled;
 
             StartPovActive = Config.Bind(
                 "General", "Start With PoV Mode", false,
@@ -395,169 +389,175 @@ namespace SVS_FreeRoam
                         "on in the game's graphics settings.",
                         new AcceptableValueRange<float>(0f, 5f), 3));
 
+            // (Categories are listed in the order they are first bound: Movement goes under Camera.)
+            WalkingSpeed = Config.Bind(
+                "Movement", "Walking Speed", 1f,
+                Ordered("How fast you walk.", new AcceptableValueRange<float>(0f, 3f), 96));
+            CarryOver(WalkingSpeed, "General");
+
             ClickWalk = Config.Bind(
-                "Click To Walk", "Click To Walk", true,
+                "Clicking Actions", "Click To Walk", true,
                 Ordered("Click the ground to walk there. Works whenever the mouse cursor is showing: in" +
                         " the overview camera, on 2D maps, and in third person while the location " +
-                        "buttons are shown.", 100));
+                        "buttons are shown.", 400));
+            CarryOver(ClickWalk, "Click To Walk");
 
             ClickWalkButton = Config.Bind(
-                "Click To Walk", "Walk Button", KeyCode.Mouse0,
-                Ordered("Mouse0 is the left button.", 90));
-
-            ClickWalkButton2 = Config.Bind(
-                "Click To Walk", "Walk Button (second)", KeyCode.None,
-                Ordered("An optional second button.", 89));
+                "Hotkeys", "Walk Button", KeyCode.Mouse0,
+                Ordered("Click To Walk's button. Mouse0 is the left button.", 59));
+            CarryOver(ClickWalkButton, "Click To Walk");
 
             ClickWalkMaxSnap = Config.Bind(
-                "Click To Walk", "Max Snap Distance", 3f,
+                "Clicking Actions", "Max Snap Distance", 3f,
                 Ordered("A click lands on the nearest spot you can walk to. If that is further than " +
-                        "this many metres away, the click is ignored.", new AcceptableValueRange<float>(0.5f, 50f), 80));
+                        "this many metres away, the click is ignored.", new AcceptableValueRange<float>(0.5f, 50f), 380));
+            CarryOver(ClickWalkMaxSnap, "Click To Walk");
 
             ClickWalkSpots = Config.Bind(
-                "Click To Walk", "Use Seats And Special Spots", true,
+                "Clicking Actions", "Use Seats And Special Spots", true,
                 Ordered("Clicking a chair, a bench or another special spot walks you there and uses " +
-                        "it, with the animation the game plays at that spot.", 70));
+                        "it, with the animation the game plays at that spot.", 370));
+            CarryOver(ClickWalkSpots, "Click To Walk");
 
             SpotClickSize = Config.Bind(
-                "Click To Walk", "Spot Click Size", 0.6f,
+                "Clicking Actions", "Spot Click Size", 0.6f,
                 Ordered("How close to a seat or special spot the cursor has to be for the click to " +
-                        "count as a click on it, in metres.", new AcceptableValueRange<float>(0.2f, 3f), 65));
+                        "count as a click on it, in metres.", new AcceptableValueRange<float>(0.2f, 3f), 365));
+            CarryOver(SpotClickSize, "Click To Walk");
 
             ClickWalkIdle = Config.Bind(
-                "Click To Walk", "Idle Animation On Arrival", false,
+                "Clicking Actions", "Idle Animation On Arrival", false,
                 Ordered("After walking to a clicked spot, your character plays one of the map's " +
-                        "standing idle animations instead of just standing there.", 60));
+                        "standing idle animations instead of just standing there.", 360));
+            CarryOver(ClickWalkIdle, "Click To Walk");
 
             ClickFollow = Config.Bind(
-                "Click To Follow", "Click To Follow", true,
+                "Clicking Actions", "Click To Follow", true,
                 Ordered("Click a character to follow them, through doorways too. Click them again, or " +
-                        "click somewhere else, to stop. You stop if someone comes over to talk to you.", 100));
+                        "click somewhere else, to stop. You stop if someone comes over to talk to you.", 300));
+            CarryOver(ClickFollow, "Click To Follow");
 
             FollowButton = Config.Bind(
-                "Click To Follow", "Follow Button", KeyCode.Mouse1,
-                Ordered("Mouse1 is the right button. In third person it only follows while the mouse " +
-                        "cursor is showing; otherwise it is the interact button.", 90));
-
-            FollowButton2 = Config.Bind(
-                "Click To Follow", "Follow Button (second)", KeyCode.None,
-                Ordered("An optional second button.", 89));
+                "Hotkeys", "Follow Button", KeyCode.Mouse1,
+                Ordered("Click To Follow's button. Mouse1 is the right button. In third person it only follows while the mouse " +
+                        "cursor is showing; otherwise it is the interact button.", 58));
+            CarryOver(FollowButton, "Click To Follow");
 
             FollowMinDistance = Config.Bind(
-                "Click To Follow", "Minimum Distance", 1f,
+                "Clicking Actions", "Minimum Distance", 1f,
                 Ordered("Never get closer to them than this (metres).",
-                        new AcceptableValueRange<float>(0.3f, 10f), 80));
+                        new AcceptableValueRange<float>(0.3f, 10f), 280));
+            CarryOver(FollowMinDistance, "Click To Follow");
 
             FollowIdealDistance = Config.Bind(
-                "Click To Follow", "Ideal Distance", 2f,
+                "Clicking Actions", "Ideal Distance", 2f,
                 Ordered("How far behind them you settle (metres).",
-                        new AcceptableValueRange<float>(0.3f, 30f), 79));
+                        new AcceptableValueRange<float>(0.3f, 30f), 279));
+            CarryOver(FollowIdealDistance, "Click To Follow");
 
             FollowRunDistance = Config.Bind(
-                "Click To Follow", "Run Distance", 5f,
+                "Clicking Actions", "Run Distance", 5f,
                 Ordered("Fall further behind than this (metres) and you run to catch up.",
-                        new AcceptableValueRange<float>(1f, 50f), 78));
+                        new AcceptableValueRange<float>(1f, 50f), 278));
+            CarryOver(FollowRunDistance, "Click To Follow");
 
             FollowSpeedMode = Config.Bind(
-                "Click To Follow", "Speed Mode", FollowSpeed.Dynamic,
+                "Clicking Actions", "Speed Mode", FollowSpeed.Dynamic,
                 Ordered("WalkOrRun: walk or run at your own speeds. MatchSpeed: keep their pace. " +
-                        "Dynamic: the further behind you are, the faster you go.", 70));
+                        "Dynamic: the further behind you are, the faster you go.", 270));
+            CarryOver(FollowSpeedMode, "Click To Follow");
 
             FollowRunAnimationAbove = Config.Bind(
-                "Click To Follow", "Run Animation Above", 2.2f,
+                "Clicking Actions", "Run Animation Above", 2.2f,
                 Ordered("MatchSpeed and Dynamic: above this speed (metres per second) you are shown " +
-                        "running rather than walking.", new AcceptableValueRange<float>(0.5f, 8f), 69));
+                        "running rather than walking.", new AcceptableValueRange<float>(0.5f, 8f), 269));
+            CarryOver(FollowRunAnimationAbove, "Click To Follow");
 
             FollowCatchUpSpeed = Config.Bind(
-                "Click To Follow", "Catch-Up Speed", 4f,
+                "Clicking Actions", "Catch-Up Speed", 4f,
                 Ordered("MatchSpeed and Dynamic: how fast you go when catching up (metres per second).",
-                        new AcceptableValueRange<float>(1f, 10f), 68));
+                        new AcceptableValueRange<float>(1f, 10f), 268));
+            CarryOver(FollowCatchUpSpeed, "Click To Follow");
             ClickIdle = Config.Bind(
-                "Click To Idle", "Click To Idle", true,
-                Ordered("Click your own character to play a random idle animation, and click again " +
-                        "to stop it. Hold the button on your character to choose one from a wheel. " +
-                        "In third person, the key below does the same.", 100));
+                "Clicking Actions", "Click For Animations", true,
+                Ordered("Click your own character to play an idle animation, and click again to " +
+                        "stop it. Hold the button on your character to choose one from a wheel. In " +
+                        "third person the Idle Key (Hotkeys) does the same, and sits you on a seat " +
+                        "next to you.", 200));
+            CarryOver(ClickIdle, "Click To Idle", "Click To Idle");
 
             IdleButton = Config.Bind(
-                "Click To Idle", "Idle Button", KeyCode.Mouse1,
-                Ordered("Mouse1 is the right button.", 90));
-
-            IdleButton2 = Config.Bind(
-                "Click To Idle", "Idle Button (second)", KeyCode.None,
-                Ordered("An optional second button.", 89));
+                "Hotkeys", "Idle Button", KeyCode.Mouse1,
+                Ordered("Click For Animations: the button to click or hold on your character, or " +
+                        "to hold on another. Mouse1 is the right button.", 57));
+            CarryOver(IdleButton, "Click To Idle");
 
             IdleKeyThirdPerson = Config.Bind(
-                "Click To Idle", "Idle Key In Third Person", KeyCode.Mouse2,
+                "Hotkeys", "Idle Key In Third Person", KeyCode.Mouse2,
                 Ordered("Mouse2 is the middle button. Tap next to a chair or other special spot to " +
                         "use it, and tap again to get up; anywhere else a tap plays a random " +
                         "animation, and another tap stops it. Hold for the wheel. While a character " +
-                        "is marked, the middle button walks to them instead.", 88));
-
-            IdleKeyThirdPerson2 = Config.Bind(
-                "Click To Idle", "Idle Key In Third Person (second)", KeyCode.None,
-                Ordered("An optional second key.", 87));
+                        "is marked, the middle button walks to them instead.", 56));
+            CarryOver(IdleKeyThirdPerson, "Click To Idle");
 
             WheelSet = Config.Bind(
-                "Click To Idle", "Animation Set", AnimationSet.Fitting,
+                "Clicking Actions", "Animation Set", AnimationSet.Fitting,
                 Ordered("Which animations the wheel lists, and a tap picks one of at random.\n\n" +
                         "Fitting - what suits where you are: standing ones in the open, the seat's " +
                         "own when seated.\nMap Animations - everything this map's spots offer.\n" +
                         "Sitting - every chair and desk animation in the game.\nFavorites 1 to 3 - " +
                         "your own collections; put one animation in a collection to make a tap " +
                         "always play it.\nAll - every animation in the game. Many only look right " +
-                        "at a chair, a desk or with the props of an activity.", 85));
+                        "at a chair, a desk or with the props of an activity.", 185));
+            CarryOver(WheelSet, "Click To Idle");
 
             CharacterWheel = Config.Bind(
-                "Click To Idle", "Character Wheel", true,
+                "Clicking Actions", "Character Wheel", true,
                 Ordered("Hold the button on another character for a wheel of things to do with " +
-                        "them: talk, follow, switch to.", 83));
+                        "them: talk, follow, switch to.", 186));
+            CarryOver(CharacterWheel, "Click To Idle");
 
             ThirdPersonSpots = Config.Bind(
-                "Click To Idle", "Use Spots In Third Person", true,
+                "Clicking Actions", "Use Spots In Third Person", true,
                 Ordered("In third person, a tap of the idle key next to a chair, bench or other " +
-                        "special spot uses it.", 80));
+                        "special spot uses it.", 180));
+            CarryOver(ThirdPersonSpots, "Click To Idle");
 
             ShowSpotMarker = Config.Bind(
-                "Click To Idle", "Show Spot Marker", false,
-                Ordered("In third person, show a marker on the seat or spot the idle key would use.", 79));
+                "Clicking Actions", "Show Spot Marker", false,
+                Ordered("In third person, show a marker on the seat or spot the idle key would use.", 179));
+            CarryOver(ShowSpotMarker, "Click To Idle");
 
             WheelSlots = Config.Bind(
-                "Click To Idle", "Wheel Size", 12,
+                "Clicking Actions", "Wheel Size", 12,
                 Ordered("How many choices the wheel shows at once. The rest go on further pages, " +
                         "turned with the mouse wheel. In third person a wheel with pages stays open " +
                         "when you let go: click a choice, or the centre to cancel.",
-                        new AcceptableValueRange<int>(4, 16), 78));
+                        new AcceptableValueRange<int>(4, 16), 178));
+            CarryOver(WheelSlots, "Click To Idle");
 
             Favorites1 = Config.Bind(
-                "Click To Idle", "Favorites 1", "",
+                "Clicking Actions", "Favorites 1", "",
                 Ordered("A collection of favorite animations. With the wheel open, press 1 on an " +
                         "animation to add it or take it out. Favorites are starred with their " +
                         "collection's number and listed first. (Kept here by name, separated by " +
-                        "commas.)", 74));
+                        "commas.)", 174));
+            CarryOver(Favorites1, "Click To Idle");
             CarryOver(Favorites1, "Click To Idle", "Favorite Animations");
             CarryOver(Favorites1, "Click To Idle", "Favo" + "urite Animations");
 
             Favorites2 = Config.Bind(
-                "Click To Idle", "Favorites 2", "",
-                Ordered("A second collection: press 2 on an animation in the wheel.", 73));
+                "Clicking Actions", "Favorites 2", "",
+                Ordered("A second collection: press 2 on an animation in the wheel.", 173));
+            CarryOver(Favorites2, "Click To Idle");
 
             Favorites3 = Config.Bind(
-                "Click To Idle", "Favorites 3", "",
-                Ordered("A third collection: press 3 on an animation in the wheel.", 72));
-
-            AnimationProps = Config.Bind(
-                "Click To Idle", "Animation Props And Effects", true,
-                Ordered("Animations are started the way the game starts them for other characters, " +
-                        "with whatever they hold (a phone, a book) and the sounds some of them " +
-                        "make (the exercise ones). Off, only the movement plays.", 71));
+                "Clicking Actions", "Favorites 3", "",
+                Ordered("A third collection: press 3 on an animation in the wheel.", 172));
+            CarryOver(Favorites3, "Click To Idle");
 
             CarryOverFromWalkAnywhere();
 
-
-            WalkingSpeed = Config.Bind(
-                "Movement", "Walking Speed", 1f,
-                Ordered("How fast you walk.", new AcceptableValueRange<float>(0f, 3f), 96));
-            CarryOver(WalkingSpeed, "General");
 
             RunningFactor = Config.Bind(
                 "Movement", "Running Factor", 2.8f,
@@ -838,16 +838,6 @@ namespace SVS_FreeRoam
                 Ordered("How high above your character the camera looks.",
                     new AcceptableValueRange<float>(0.05f, 2.5f), 100));
 
-            MinPitch = Config.Bind(
-                "Camera", "Min Pitch", -90f,
-                Ordered("How far you can look up from below.",
-                    new AcceptableValueRange<float>(-90f, 0f), 70));
-
-            MaxPitch = Config.Bind(
-                "Camera", "Max Pitch", 90f,
-                Ordered("How far you can look down from above.",
-                    new AcceptableValueRange<float>(0f, 90f), 65));
-
             MinZoom = Config.Bind(
                 "Camera", "Min Camera Distance", 0f,
                 new ConfigDescription(
@@ -866,34 +856,12 @@ namespace SVS_FreeRoam
                     new AcceptableValueRange<float>(0.1f, 5f), 95));
 
             CameraSmoothing = Config.Bind(
-                "Camera", "Camera Smoothing", 0f,
+                "Camera", "Camera Smoothing", 0.05f,
                 new ConfigDescription(
-                    "How smoothly the camera follows. 0 is instant.",
+                    "How softly the camera follows you: about the time, in seconds, it takes to " +
+                    "catch up. 0 is instant. Looking around is never delayed.",
                     new AcceptableValueRange<float>(0f, 1f),
                     new ConfigurationManagerAttributes { Order = 40 }));
-
-            SmoothingMode = Config.Bind(
-                "Camera", "Camera Smoothing Type", SmoothingType.FollowPivot,
-                new ConfigDescription(
-                    "FollowPivot - smooths the camera following you, while mouse look stays " +
-                    "instant.\n\nCameraPosition - smooths everything; softer, but the camera lags " +
-                    "behind.", null,
-                    new ConfigurationManagerAttributes { Order = 35 }));
-
-            SmoothingCurve = Config.Bind(
-                "Camera", "Camera Smoothing Feel", SmoothingFeel.Original,
-                new ConfigDescription(
-                    "How Camera Smoothing eases. Original - this plugin's own.\n\nAicomi Glide - " +
-                    "the glide of AC_MainCameraExtension: the slider is how long the camera " +
-                    "takes to catch up, in seconds.", null,
-                    new ConfigurationManagerAttributes { Order = 34 }));
-
-            PovOn2DMaps = Config.Bind(
-                "Camera", "Third Person On 2D Maps (Not Recommended)", false,
-                new ConfigDescription(
-                    "NOT RECOMMENDED. Allows third person on the maps that are a flat picture. " +
-                    "They were not made for it: expect to walk on a backdrop.", null,
-                    new ConfigurationManagerAttributes { Order = 3 }));
 
             OverviewRestore = Config.Bind(
                 "Camera", "Overview Camera Restore", OverviewRestoreMode.On,
@@ -1141,9 +1109,9 @@ namespace SVS_FreeRoam
             int carried = 0;
             var entries = new (ConfigEntryBase Entry, string OldKey)[]
             {
-                (ClickWalk, "Enable Click To Walk"), (ClickWalkButton, null), (ClickWalkButton2, null),
+                (ClickWalk, "Enable Click To Walk"), (ClickWalkButton, null),
                 (ClickWalkMaxSnap, null), (ClickFollow, "Enable Click To Follow"), (FollowButton, null),
-                (FollowButton2, null), (FollowMinDistance, null), (FollowIdealDistance, null),
+                (FollowMinDistance, null), (FollowIdealDistance, null),
                 (FollowRunDistance, null), (FollowSpeedMode, null), (FollowRunAnimationAbove, null),
                 (FollowCatchUpSpeed, null),
             };
@@ -1322,13 +1290,20 @@ namespace SVS_FreeRoam
         {
             if (Mode.Value == ForwardMode.Off) return;
 
+            // In third person one mouse button walks forward and the other interacts (and,
+            // held, drags the camera). Choosing the walking button moves interact to the other.
             var walk = Mode.Value == ForwardMode.LeftClickForward ? KeyCode.Mouse0 : KeyCode.Mouse1;
-            if (InteractKey.Value != walk && InteractKey2.Value != walk) return;
-
-            Logger.LogWarning(
-                $"Interact Key is bound to {walk}, which Forward Mode is also using to walk. " +
-                "Both will fire on the same button. Bind interact to the other mouse button, or " +
-                "set Forward Mode to Off.");
+            var other = walk == KeyCode.Mouse0 ? KeyCode.Mouse1 : KeyCode.Mouse0;
+            if (InteractKey.Value == walk)
+            {
+                InteractKey.Value = other;
+                Logger.LogInfo($"Interact Key moved to {other}: Forward Mode walks with {walk}.");
+            }
+            if (InteractKey2.Value == walk)
+            {
+                InteractKey2.Value = KeyCode.None;
+                Logger.LogInfo($"Interact Key's second binding cleared: Forward Mode walks with {walk}.");
+            }
         }
 
         /// <summary>

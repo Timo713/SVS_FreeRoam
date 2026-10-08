@@ -21,7 +21,7 @@ namespace SVS_FreeRoam
         /// switched off, which is all it takes to hand everything back (the Disable path).</summary>
         internal static bool Active
         {
-            get => _active && Plugin.ThirdPersonMode.Value;
+            get => _active && Plugin.PovAllowed;
             private set => _active = value;
         }
 
@@ -63,7 +63,7 @@ namespace SVS_FreeRoam
         /// <summary>Reads the toggle key and applies whatever it means in this mode.</summary>
         internal static void HandleToggle()
         {
-            if (!Plugin.ThirdPersonMode.Value) return;
+            if (!Plugin.PovAllowed) return;
             if (!Keys.Down(Plugin.ToggleKey, Plugin.ToggleKey2) &&
                 !(Plugin.GamepadSupport.Value && !GamepadUI.OnCycledScreen &&
                   Keys.Down(Plugin.GamepadToggleKey, Plugin.GamepadToggleKey2))) return;

@@ -2176,10 +2176,23 @@ Code: `ClickIdler.cs` (input, wheels, playing), `ClickIdler.Seats.cs`, `ClickIdl
   go first until it is let go too, nor in its first 0.1 s (`MouseForwardHeldBack`). Off
   when Forward Mode is RightClickForward. A fixed 0.25 s hold before the drag began
   (rounds 14-15) felt laggy and let a step through.
-- **Camera Smoothing Feel**: both plugins ease exponentially; only the slider's meaning
-  differs. Original: rate from 30/s down to 1.5/s, game time. Aicomi Glide:
-  `1 - exp(-min(unscaled dt, 0.1) / slider)`, the slider a time in seconds.
-- **Third Person On 2D Maps** (off): skips the `Is2DMap` / `IsUseTimezone2D` test that
-  keeps third person off those maps. Nothing else was adapted for them. UNVERIFIED.
+- **Camera smoothing** is AC_MainCameraExtension's glide only: `1 - exp(-min(unscaled dt,
+  0.1) / slider)`, the slider a time in seconds (default 0.05), applied to what the
+  camera orbits (looking is never eased). Our own curve (rate 30/s down to 1.5/s) and
+  the "ease the camera position" type were the same kind of easing and were removed.
+- **PoV Mode** (General) is a dropdown: Enabled On 3D Maps, Enabled On All Maps (Not
+  Recommended), Disabled. "All maps" only skips the `Is2DMap` / `IsUseTimezone2D` test;
+  nothing else was adapted for the flat maps.
+- **The drag button is the mouse button that does not walk forward** (`CameraRig
+  .DragKey`), and changing Forward Mode moves Interact Key off the walking button
+  (`WarnAboutInteractKey`, logged).
+- Crouching uses Crouch Height alone (a dragged height does not add to it) and a toggled
+  crouch is kept through third person. With the floor solid to the camera, what the
+  camera orbits is kept 0.15 m above the player's feet.
+- Settings tidied (2026-10-07): the three Click To sections are "Clicking Actions" (the
+  old ones are carried over), their buttons are in Hotkeys with no second binding, pitch
+  limits are fixed at -90 / 90, Animation Props And Effects is always on, Click To Idle
+  is "Click For Animations". Categories are listed in bind order, so Movement's first
+  setting is bound right after Camera's.
 - The Depth Of Field In Third Person dropdown is gone: the focus is always ours, and
   "Third Person Blur Strength" (default 0 = no blur) is the only setting.

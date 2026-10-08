@@ -21,48 +21,47 @@ namespace SVS_FreeRoam
 
         private static float _pitch, _yaw;
         private static float _distance = 3f, _targetDistance = 3f;
-        // Dragging the camera with the right mouse button, as AC_MainCameraExtension does:
-        // held, the mouse moves the camera instead of turning it. Up and down raise it, left
-        // and right bring it in and out; with the left button held as well, up and down are in
-        // and out and left and right slide it sideways. A short click is still the button's
-        // own function (interact): let go within TapTime without having moved the mouse more
-        // than TapSlop. The drag itself starts with the press, so there is no wait before the
-        // camera moves. Reset View puts it all back.
+        // Dragging the camera with a mouse button, as AC_MainCameraExtension does. The button is
+        // the one that does not walk forward (the right one, unless Forward Mode is Right Click
+        // Forward): while it is down the mouse moves the camera instead of turning it. Up and
+        // down raise it, right pulls it back and left brings it in; with the walking button
+        // held as well, up is forward and left and right slide it sideways. In first person
+        // it works the lens instead. A short click is still the button's own function
+        // (interact): let go within TapTime without having moved the mouse more than TapSlop.
+        // Reset View and the first person key put it all back.
         //
-        // The left button walks forward when held. Pressed for a drag with both buttons it
-        // must not: it does not walk while the right one is down, nor after the right one is
-        // let go first until it has been let go too, nor for its first tenth of a second (so
-        // pressing the two together, left a touch early, does not take a step).
-        private const float TapTime = 0.3f, TapSlop = 0.6f, LeftGrace = 0.1f;
-        private static float _rightMoved;
-        private static float _leftDownAt = -1f;
-        private static bool _leftLatched;
-
-        /// <summary>The left button is not to walk forward just now.</summary>
-        internal static bool MouseForwardHeldBack =>
-            _dragInUse && (_dragging || _leftLatched ||
-                           (_leftDownAt >= 0f && Time.unscaledTime - _leftDownAt < LeftGrace));
+        // The walking button, pressed for a two-button drag, must not walk: not while the drag
+        // button is down, nor after that one is let go first, until it has been let go too.
+        private const float TapTime = 0.3f, TapSlop = 0.6f;
         private const float DragSpeed = 0.06f, DragLensSpeed = 1.5f, DragLimit = 1.5f;
+        private const float FloorClearance = 0.15f;
         private static float _rightDownAt = -1f;
-        private static bool _dragging, _dragInUse;
+        private static float _dragMoved;
+        private static bool _dragging, _dragInUse, _walkLatched;
         private static int _tapFrame = -1;
         private static float _raise, _raiseWanted, _side, _sideWanted;
 
-        /// <summary>The right button is the drag button just now, so its own function waits for a short click.</summary>
+        private static int DragButton => Plugin.Mode.Value == ForwardMode.RightClickForward ? 0 : 1;
+
+        /// <summary>The mouse button that drags the camera.</summary>
+        internal static KeyCode DragKey => DragButton == 0 ? KeyCode.Mouse0 : KeyCode.Mouse1;
+
+        /// <summary>The drag button is in use as one, so its own function waits for a short click.</summary>
         internal static bool DragButtonInUse => _dragInUse;
 
-        /// <summary>The right button was clicked, not dragged, and let go this frame.</summary>
-        internal static bool RightTapped => _tapFrame == Time.frameCount;
+        /// <summary>The drag button was clicked, not dragged, and let go this frame.</summary>
+        internal static bool DragTapped => _tapFrame == Time.frameCount;
+
+        /// <summary>The walking button is not to walk forward just now.</summary>
+        internal static bool MouseForwardHeldBack => _dragInUse && (_dragging || _walkLatched);
 
         /// <param name="active">Third person is driving and the cursor is locked.</param>
         internal static void TrackDrag(bool active)
         {
-            // Not where the right button is the one that walks forward.
-            _dragInUse = active && Plugin.Mode.Value != ForwardMode.RightClickForward && !ClickIdler.BlocksInput;
-
-            bool left = Input.GetMouseButton(0);
-            if (!left) { _leftLatched = false; _leftDownAt = -1f; }
-            else if (_leftDownAt < 0f) _leftDownAt = Time.unscaledTime;
+            _dragInUse = active && !ClickIdler.BlocksInput;
+            int drag = DragButton;
+            bool walk = Input.GetMouseButton(1 - drag);
+            if (!walk) _walkLatched = false;
 
             if (!_dragInUse)
             {
@@ -71,16 +70,16 @@ namespace SVS_FreeRoam
                 return;
             }
 
-            if (Input.GetMouseButtonDown(1))
+            if (Input.GetMouseButtonDown(drag))
             {
                 _rightDownAt = Time.unscaledTime;
-                _rightMoved = 0f;
+                _dragMoved = 0f;
             }
             if (_rightDownAt < 0f) return;
 
-            if (!Input.GetMouseButton(1))
+            if (!Input.GetMouseButton(drag))
             {
-                if (Time.unscaledTime - _rightDownAt <= TapTime && _rightMoved <= TapSlop)
+                if (Time.unscaledTime - _rightDownAt <= TapTime && _dragMoved <= TapSlop)
                     _tapFrame = Time.frameCount;
                 _rightDownAt = -1f;
                 _dragging = false;
@@ -88,16 +87,15 @@ namespace SVS_FreeRoam
             }
 
             _dragging = true;
-            if (left) _leftLatched = true;
+            if (walk) _walkLatched = true;
 
             float dx = Input.GetAxis("Mouse X"), dy = Input.GetAxis("Mouse Y");
-            _rightMoved += Mathf.Abs(dx) + Mathf.Abs(dy);
+            _dragMoved += Mathf.Abs(dx) + Mathf.Abs(dy);
 
             // In first person there is no distance to change: the drag works the lens instead,
-            // left or down narrowing it (zooming in), right or up widening it.
-            // Once the lens is fully wide again, dragging on (right or up) leaves first person:
-            // the drag below pulls the camera back.
-            if (_targetDistance <= Plugin.MinZoom.Value + 0.0001f && !left && Plugin.OpticalZoom.Value)
+            // left or down narrowing it (zooming in), right or up widening it. Once the lens is
+            // fully wide again, dragging on leaves first person: the drag below pulls back.
+            if (_targetDistance <= Plugin.MinZoom.Value + 0.0001f && !walk && Plugin.OpticalZoom.Value)
             {
                 float lens = (dx + dy) * DragLensSpeed;
                 if (lens < 0f || _targetFov < BaseFov - 0.0001f)
@@ -108,11 +106,8 @@ namespace SVS_FreeRoam
                 if (dy > 0f && dx <= 0f) dx = dy;       // "up" out of first person is "back", not "raise"
             }
 
-            // Out of first person. Alone: up and down raise the camera, right pulls it back and
-            // left brings it in (as AC_MainCameraExtension has it). With the left button: up is
-            // forward, and left and right slide it sideways.
             float back;
-            if (left)
+            if (walk)
             {
                 back = -dy;
                 _sideWanted = Mathf.Clamp(_sideWanted + dx * DragSpeed, -DragLimit, DragLimit);
@@ -130,8 +125,8 @@ namespace SVS_FreeRoam
         private static float _fov = BaseFov, _targetFov = BaseFov;
         private static bool _started;
 
-        private static Vector3 _smoothedPivot, _smoothedCamera;
-        private static bool _havePivot, _haveCameraPos;
+        private static Vector3 _smoothedPivot;
+        private static bool _havePivot;
 
         private static float _effectiveDistance = 3f;
         private static bool _manualHide;
@@ -199,7 +194,6 @@ namespace SVS_FreeRoam
         {
             _havePlaced = false;
             _havePivot = false;
-            _haveCameraPos = false;
         }
 
         // ------------------------------------------------------------ overview
@@ -442,20 +436,16 @@ namespace SVS_FreeRoam
                 if (allowZoom) ApplyZoom(Input.GetAxis("Mouse ScrollWheel"));
             }
 
-            _pitch = Mathf.Clamp(_pitch, Plugin.MinPitch.Value, Plugin.MaxPitch.Value);
+            _pitch = Mathf.Clamp(_pitch, -90f, 90f);
 
             float smoothing = Mathf.Clamp01(Plugin.CameraSmoothing.Value);
             if (_hidingCharacter && Plugin.NoSmoothingWhenHidden.Value) smoothing = 0f;
 
-            // Both curves ease the same way (a fixed share of what is left, each moment); they
-            // differ in how the slider sets the pace. Ours runs from 30 a second down to 1.5;
-            // AC_MainCameraExtension's takes the slider as the time, in seconds, to cover
-            // about two thirds of the way, and keeps pace when the game is paused or stutters.
-            float step;
-            if (smoothing <= 0f) step = 1f;
-            else if (Plugin.SmoothingCurve.Value == SmoothingFeel.AicomiGlide)
-                step = 1f - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, 0.1f) / smoothing);
-            else step = 1f - Mathf.Exp(-Mathf.Lerp(30f, 1.5f, smoothing) * Time.deltaTime);
+            // The glide AC_MainCameraExtension uses: a fixed share of what is left each moment,
+            // the slider being the time, in seconds, to cover about two thirds of the way. On
+            // real time, capped, so it keeps its pace when the game stutters or is paused.
+            float step = smoothing <= 0f
+                ? 1f : 1f - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, 0.1f) / smoothing);
 
             _raise = Mathf.Lerp(_raise, _raiseWanted, step);
             _side = Mathf.Lerp(_side, _sideWanted, step);
@@ -463,11 +453,16 @@ namespace SVS_FreeRoam
             _distance = smoothing > 0f ? Mathf.Lerp(_distance, _targetDistance, step) : _targetDistance;
             _fov = smoothing > 0f ? Mathf.Lerp(_fov, _targetFov, step) : _targetFov;
 
-            float height = IsCrouching() ? Plugin.CrouchHeight.Value : Plugin.CameraHeight.Value;
-            var lookTarget = playerAI.transform.position + Vector3.up * (height + _raise);
+            // Crouching is a height of its own: wherever the camera was dragged to does not add
+            // to it. And with the floor solid to the camera, a drag cannot take what the camera
+            // orbits under it (the collision check starts from there and would start too low).
+            float height = IsCrouching() ? Plugin.CrouchHeight.Value : Plugin.CameraHeight.Value + _raise;
+            if (Plugin.CameraCollision.Value && !Plugin.CollisionIgnoreGround.Value)
+                height = Mathf.Max(height, FloorClearance);
+            var lookTarget = playerAI.transform.position + Vector3.up * height;
 
-            bool smoothPivot = smoothing > 0f && Plugin.SmoothingMode.Value == SmoothingType.FollowPivot;
-            bool smoothCamera = smoothing > 0f && Plugin.SmoothingMode.Value == SmoothingType.CameraPosition;
+            // What the camera orbits is eased; looking around is not.
+            bool smoothPivot = smoothing > 0f;
 
             if (smoothPivot && _havePivot)
                 _smoothedPivot = Vector3.Lerp(_smoothedPivot, lookTarget, step);
@@ -484,17 +479,6 @@ namespace SVS_FreeRoam
 
             if (Plugin.CameraCollision.Value)
                 desired = ResolveCollision(pivot, desired, playerAI.transform);
-
-            if (smoothCamera && _haveCameraPos)
-            {
-                _smoothedCamera = Vector3.Lerp(_smoothedCamera, desired, step);
-                desired = _smoothedCamera;
-            }
-            else
-            {
-                _smoothedCamera = desired;
-                _haveCameraPos = true;
-            }
 
             cam.transform.position = desired;
             cam.transform.rotation = rotation;
@@ -529,11 +513,8 @@ namespace SVS_FreeRoam
             bool held = Keys.Held(Plugin.CrouchKey, Plugin.CrouchKey2) ||
                         (pad && Keys.Held(Plugin.GamepadCrouchKey, Plugin.GamepadCrouchKey2));
 
-            if (!_hidingCharacter)
-            {
-                _crouchLatched = false;
-                return false;
-            }
+            // Only in first person. Out of it a toggled crouch is kept for the way back in.
+            if (!_hidingCharacter) return false;
 
             var function = Plugin.CrouchFunction.Value;
             if (function == CrouchMode.WhileHeld)
